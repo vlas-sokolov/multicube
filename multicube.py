@@ -14,12 +14,14 @@ class SubCube(pyspeckit.Cube):
 
     Is designed to have methods that operate within a single spectral model.
     """
-    
-    # so I either define some things as `None` 
-    # or I'll have to call hasattr or them...
-    # TODO: which is a more Pythonic approach?
-    guess_grid = None
-    model_grid = None
+    def __init___(self, *args, **kwargs):
+        super(SubThing, self).__init__(*args, **kwargs)
+        # so I either define some things as `None` 
+        # or I'll have to call hasattr or them...
+        # TODO: which is a more Pythonic approach?
+        # A: see here http://programmers.stackexchange.com/questions/254576/is-it-a-good-practice-to-declare-instance-variables-as-none-in-a-class-in-python
+        self.guess_grid = None
+        self.model_grid = None
 
     def update_model(self, fit_type='gaussian'):
         """
@@ -77,20 +79,43 @@ class SubCube(pyspeckit.Cube):
             # TODO: what to do if the guess grid is not in place?
             guess_grid = self.guess_grid
 
-        if len(guess_grid.shape)>2 \
+        # TODO: this if/elif Christmas tree is ugly, 
+        #       there should be a smarter way to do this
+        if len(guess_grid.shape)==4 \
            and sc.cube.shape[1] in guess_grid.shape \
            and sc.cube.shape[1] in guess_grid.shape:
             # FIXME: this allows for [100,2,4] guess_grid to pass
             #        for an  [xarr.size, 100, 100] cube. Do it right!
             #
             # TODO: implement cube-like guessing grids!
+
+            # this is a good place to re-implement get_modelcube
+            # as a method that takes modelcube as a function,
+            # or just bait and switch guesses into inherited 
+            # Cube.parcube and call get_modelcube . . .
+
+            # Will do the former for now, but it may clash later
+            # when I will finish up MultiCube.multiplot()
+
             raise NotImplementedError('Someone should remind me '
                                       'to write this up. Please?')
+        if len(guess_grid.shape)==3 \
+           and self.cube.shape[1] in guess_grid.shape \
+           and self.cube.shape[1] in guess_grid.shape:
+            # FIXME: this allows for [100,2,4] guess_grid to pass
+            #        for an [xarr.size, 100, 100] cube. Do it right!
+            #
+            yy, xx = np.indices(self.cube.shape[1:])
+            model_grid = np.zeros_like(self.cube)
+            # TODO: vectorize this please please please?
+            for x,y in zip(xx.flat,yy.flat):
+                model_grid[:,y,x] = \
+                       self.specfit.get_full_model(pars=self.guess_grid[:,y,x])
+
         elif len(guess_grid.shape)==2:
             # set up the modelled spectrum grid
             model_grid = np.empty(shape=(guess_grid.shape[0], 
                                          self.xarr.size      ))
-            # TODO: vectorize this please please please?
             for i, par in enumerate(guess_grid):
                 model_grid[i] = self.specfit.get_full_model(pars=par)
         elif len(guess_grid.shape)==1:
@@ -137,7 +162,24 @@ class SubCube(pyspeckit.Cube):
         # TODO: scale this up later for MultiCube.judge() method
         #       to include the deviance information criterion, DIC
         #       (c.f Kunz et al. 2006 and Sebastian's IMPRS slides)
-        raise NotImplementedError
+
+        # TODO break-down:
+        #
+        # + First milestone  : make the blind iteration over the spectra,
+        #                      have some winner-takes-it-all selection in place
+        # - Second milestone : implement the (still broken) snr mask
+        # - Third milestone  : xy_list functionality, pixel coordinates only
+        # - Fourth milestone : extend to all possible model_grid shapes
+        #
+        if model_grid.shape!=self.cube.shape:
+            raise NotImplementedError
+        else:
+            # commence the invasion!
+            residual = (self.cube - model_grid).std(axis=0)
+            self.residual = residual
+            vmin, (xmin,ymin) = residual.min(), np.where(residual==residual.min())
+            print "Best guess at %.2f on (%i, %i)" % (vmin, xmin, ymin)
+            return vmin, (xmin, ymin)
 
     def get_snr_map(self):
         """
@@ -262,13 +304,22 @@ def main():
         sc = SubCube('foo.fits')
     except IOError:
         from astro_toolbox import make_test_cube
-        make_test_cube(outfile='foo.fits')
+        make_test_cube((100,10,10), outfile='foo.fits', sigma=(10,5))
         sc = SubCube('foo.fits')
 
     sc.update_model('gaussian')
-    sc.guess_grid = np.asarray([1,2,3])
+    guesses = [0.5, 0.2, 0.8]
+
+    npars = len(guesses)
+    parcube_size = sc.cube.size/sc.shape[0]
+    parcube_shape = (npars, sc.cube.shape[1], sc.cube.shape[2])
+    parflat = np.hstack(np.repeat([guesses],parcube_size,axis=0))
+    sc.guess_grid = parflat.reshape(*parcube_shape,order='F')
     sc.generate_model()
-    sc.model_grid
+    sc.best_guess()
+    
+    #sc.fiteach(guesses=sc.guess_grid, start_from_pixel=(5,5))
+    #sc.mapplot()
 
 if __name__ == "__main__":
 	main()
