@@ -1,3 +1,9 @@
+# FITS files
+*.fits
+
+# vim .swp fiels:
+*.py.swp
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
