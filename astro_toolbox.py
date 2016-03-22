@@ -2,6 +2,9 @@ import numpy as np
 from astropy.io import fits
 import os
 
+# TODO: rewrite this to have multiple components generated here.
+#       Having a bundle of test filaments would be very nice.
+
 def make_test_cube(shape=(30,9,9), outfile='test.fits', sigma=None, seed=0):
     """
     Generates a simple gaussian cube with noise of
