@@ -258,7 +258,13 @@ class MultiCube:
 #
 # TODO: remove this, this isn't one of your km-long scripts!
 def main():
-    sc = SubCube('/home/vsokolov/Projects/g35.39/co43.fits')
+    try:
+        sc = SubCube('foo.fits')
+    except IOError:
+        from astro_toolbox import make_test_cube
+        make_test_cube(outfile='foo.fits')
+        sc = SubCube('foo.fits')
+
     sc.update_model('gaussian')
     sc.guess_grid = np.asarray([1,2,3])
     sc.generate_model()
