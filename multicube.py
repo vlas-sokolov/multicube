@@ -6,6 +6,9 @@ model selection, and multiple component fits.
 import numpy as np
 import pyspeckit
 
+# TODO: make informative log/on-screen messages
+#       about what's being done to the subcubes
+
 class SubCube(pyspeckit.Cube):
     """
     An extention of Cube, tinkered to be an instance of MultiCube, from which 
@@ -15,11 +18,13 @@ class SubCube(pyspeckit.Cube):
     Is designed to have methods that operate within a single spectral model.
     """
     def __init___(self, *args, **kwargs):
-        super(SubThing, self).__init__(*args, **kwargs)
+        super(pyspeckit.Cube, self).__init__(*args, **kwargs)
         # so I either define some things as `None` 
         # or I'll have to call hasattr or them...
         # TODO: which is a more Pythonic approach?
-        # A: see here http://programmers.stackexchange.com/questions/254576/is-it-a-good-practice-to-declare-instance-variables-as-none-in-a-class-in-python
+        # A: see here  http://programmers.stackexchange.com/questions/
+        #             254576/is-it-a-good-practice-to-declare-instance
+        #                   -variables-as-none-in-a-class-in-python
         self.guess_grid = None
         self.model_grid = None
 
@@ -82,8 +87,8 @@ class SubCube(pyspeckit.Cube):
         # TODO: this if/elif Christmas tree is ugly, 
         #       there should be a smarter way to do this
         if len(guess_grid.shape)==4 \
-           and sc.cube.shape[1] in guess_grid.shape \
-           and sc.cube.shape[1] in guess_grid.shape:
+           and self.cube.shape[1] in guess_grid.shape \
+           and self.cube.shape[1] in guess_grid.shape:
             # FIXME: this allows for [100,2,4] guess_grid to pass
             #        for an  [xarr.size, 100, 100] cube. Do it right!
             #
@@ -257,7 +262,7 @@ class MultiCube:
         return ('Parent: MultiCube with TODO models\n'
                 'Child: %s' % self.SuperCube.__repr__())
 
-    def spawn(model, guesses=None):
+    def spawn(self, model, guesses=None):
         """
         Add a new model and a SubCube for it thorugh Cube()
         The idea is to pass a reference to large data instances 
