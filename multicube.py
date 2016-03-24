@@ -17,14 +17,24 @@ class SubCube(pyspeckit.Cube):
 
     Is designed to have methods that operate within a single spectral model.
     """
-    def __init___(self, *args, **kwargs):
-        super(pyspeckit.Cube, self).__init__(*args, **kwargs)
+    def __init___(self, *args):
+        super(SubCube, self).__init__(*args)
+
+        # FIXME: why isn't the block below executed?
+        #        probably I don't get the super inheritance
+        raise BadBadError
+
+        # because that UnitConversionError pops up way too often
+        if self.xarr.velocity_convention is None:
+            self.xarr.velocity_convention = 'radio'
+        
         # so I either define some things as `None` 
         # or I'll have to call hasattr or them...
         # TODO: which is a more Pythonic approach?
-        # A: see here  http://programmers.stackexchange.com/questions/
-        #             254576/is-it-a-good-practice-to-declare-instance
-        #                   -variables-as-none-in-a-class-in-python
+        # A: probably the hasattr method, see here:  
+        # http://programmers.stackexchange.com/questions/
+        # 254576/is-it-a-good-practice-to-declare-instance
+        # -variables-as-none-in-a-class-in-python
         self.guess_grid = None
         self.model_grid = None
 
@@ -112,6 +122,7 @@ class SubCube(pyspeckit.Cube):
             #
             yy, xx = np.indices(self.cube.shape[1:])
             model_grid = np.zeros_like(self.cube)
+
             # TODO: vectorize this please please please?
             for x,y in zip(xx.flat,yy.flat):
                 model_grid[:,y,x] = \
@@ -181,6 +192,9 @@ class SubCube(pyspeckit.Cube):
         else:
             # commence the invasion!
             residual = (self.cube - model_grid).std(axis=0)
+            if ~np.isnan(residual).any():
+                # FIXME: throw warning for all-NaN case
+                return
             self.residual = residual
             vmin, (xmin,ymin) = residual.min(), np.where(residual==residual.min())
             print "Best guess at %.2f on (%i, %i)" % (vmin, xmin, ymin)
@@ -320,6 +334,7 @@ def main():
     parcube_shape = (npars, sc.cube.shape[1], sc.cube.shape[2])
     parflat = np.hstack(np.repeat([guesses],parcube_size,axis=0))
     sc.guess_grid = parflat.reshape(*parcube_shape,order='F')
+
     sc.generate_model()
     sc.best_guess()
     
