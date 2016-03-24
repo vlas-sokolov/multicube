@@ -7,19 +7,6 @@ import numpy as np
 import astropy.units as u
 import pyspeckit
 
-# TODO: scrap for parts!
-def makeSNRMS(spc, vmin=[5,69], vmax=[21,85], unit='km/s'):
-    # TODO: need to make sure I'm getting iterable vmin and vmax!
-    if vmin is None and vmax is None:
-        print "Calculating rms from the whole cube!"
-        vmin = [spc.xarr.min().to(unit).value]
-        vmax = [spc.xarr.max().to(unit).value]
-    spc.xarr.velocity_convention = 'radio'
-    tostack = [spc.slice(v1,v2,unit) for (v1,v2) in zip(vmin,vmax)]
-    rmsMap = np.vstack([subspc.cube for subspc in tostack]).std(axis=0)
-    snrMap = spc.cube.max(axis=0)/rmsMap
-    return rmsMap, snrMap
-
 # TODO: make informative log/on-screen messages
 #       about what's being done to the subcubes
 
@@ -274,7 +261,7 @@ class SubCube(pyspeckit.Cube):
         self._mask_signal = signal_mask
         self._mask_noise = noise_mask
 
-        # NOTE: no need to care about units past this point!
+        # no need to care about units at this point
         snr_map = self.get_signal_map(signal_mask) / \
                              self.get_rms_map(noise_mask)
         self._snr_map = snr_map
@@ -295,8 +282,6 @@ class SubCube(pyspeckit.Cube):
                     # FIXME: this is too slow, find a better way!
                     unit_bkp = self.xarr.unit
                     self.xarr.convert_to_unit(unit)
-                    # NOTE: if in a pitch, consider using this:
-                    # unit_high.to('pixel', self.xarr.equivalencies)
                 except u.core.UnitConversionError as err:
                     raise type(err)(str(err) + "\nConsider setting, e.g.:\n"
                             "SubCube.xarr.velocity_convention = 'radio'\n"
