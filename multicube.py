@@ -4,7 +4,21 @@ for extended flexibility with input guesses,
 model selection, and multiple component fits.
 """
 import numpy as np
+import astropy.units as u
 import pyspeckit
+
+# TODO: scrap for parts!
+def makeSNRMS(spc, vmin=[5,69], vmax=[21,85], unit='km/s'):
+    # TODO: need to make sure I'm getting iterable vmin and vmax!
+    if vmin is None and vmax is None:
+        print "Calculating rms from the whole cube!"
+        vmin = [spc.xarr.min().to(unit).value]
+        vmax = [spc.xarr.max().to(unit).value]
+    spc.xarr.velocity_convention = 'radio'
+    tostack = [spc.slice(v1,v2,unit) for (v1,v2) in zip(vmin,vmax)]
+    rmsMap = np.vstack([subspc.cube for subspc in tostack]).std(axis=0)
+    snrMap = spc.cube.max(axis=0)/rmsMap
+    return rmsMap, snrMap
 
 # TODO: make informative log/on-screen messages
 #       about what's being done to the subcubes
@@ -184,7 +198,7 @@ class SubCube(pyspeckit.Cube):
         # - Fourth milestone : extend to all possible model_grid shapes
         #
         if model_grid.shape!=self.cube.shape:
-            raise NotImplementedError
+            raise NotImplementedError("Sorry, still working on it!")
         else:
             # commence the invasion!
             residual = (self.cube - model_grid).std(axis=0)
@@ -196,44 +210,156 @@ class SubCube(pyspeckit.Cube):
             print "Best guess at %.2f on (%i, %i)" % (vmin, xmin, ymin)
             return vmin, (xmin, ymin)
 
-    def get_snr_map(self):
+    def get_snr_map(self, signal=None, noise=None, unit='km/s', 
+                    signal_mask=None, noise_mask=None          ):
         """
-        Calculates S/N ratio for the cube.
+        Calculates S/N ratio for the cube. If no information is given on where
+        to look for signal and noise channels, a (more-or-less reasonable) rule
+        of thirds is used: the outer thirds of the channel range are used to 
+        get the root mean square of the noise, and the max value in the inner 
+        third is assumed to be the signal strength.
+        
+        Parameters
+        ----------
+        signal : 2xN numpy.array, where N is the total number of signal blocks.
+                 Should contain channel numbers in `unit` convention, the first
+                 subarray for start of the signal block and the second one for
+                 the end of the signal block
+
+        noise : 2xN numpy.array, where N is the total number of noise blocks.
+                Same as `signal` otherwise.
+
+        unit : a unit for specifying the channels. Defaults to 'km/s'.
+               If set to 'pixel', actualy channel numbers are selected.
+
+        signal_mask : dtype=bool numpy.array of SubCube.xarr size
+                      If specified, used as a mask to get channels with signal.
+                      Overrules `signal`
+
+        noise_mask : dtype=bool numpy.array of SubCube.xarr size
+                     If specified, used as a mask to get channels with noise.
+                     Overrules `noise`
 
         Returns
         -------
         snr_map : numpy.array
                   Also stored under SubCube.snr_map
         """
-        snr_map = self.get_signal_map(self) / self.get_rms_map(self)
+        # will overwrite this lates if no ranges were actually given
+        unit = {'signal': unit, 'noise': unit}
+
+        # get rule of thirds signal and noise if no ranges were given
+        default_cut = 0.33
+        if signal is None:
+            # find signal cuts for the current unit?
+            # nah let's just do it in pixels, shall we?
+            i_low, i_high = int(round(self.xarr.size *    default_cut )),\
+                            int(round(self.xarr.size * (1-default_cut)))
+            signal = [[i_low+1], [i_high-1]]
+            unit['signal'] = 'pixel'
+
+        if noise is None:
+            # find signal cuts for the current unit?
+            # nah let's just do it in pixels, shall we?
+            i_low, i_high = int(round(self.xarr.size *    default_cut )),\
+                            int(round(self.xarr.size * (1-default_cut)))
+            noise = [[0, i_high], [i_low, self.xarr.size-1]]
+            unit['noise'] = 'pixel'
+
+        # setting xarr masks from high / low indices
+        if signal_mask is None:
+            signal_mask = self.get_mask(*signal, unit=unit['signal'])
+        if noise_mask is None:
+            noise_mask = self.get_mask(*noise, unit=unit['noise'])
+        self._mask_signal = signal_mask
+        self._mask_noise = noise_mask
+
+        # NOTE: no need to care about units past this point!
+        snr_map = self.get_signal_map(signal_mask) / \
+                             self.get_rms_map(noise_mask)
         self._snr_map = snr_map
         return snr_map
 
-    def get_rms_map(self, noise_heads=None, noise_tails=None, unit='km/s'):
+    def get_mask(self, low_indices, high_indices, unit):
+        """
+        Converts low / high indices arrays into a mask on self.xarr
+        """
+        mask = np.array([False]*self.xarr.size)
+        for low, high in zip(low_indices, high_indices):
+            # you know this is a hack right?
+            # also, undocumented funcitonality is bad and you should feel bad
+            if unit not in ['pix','pixel','pixels','chan','channel','channels']:
+                # converting whatever units we're given to pixels
+                unit_low, unit_high = low*u.Unit(unit), high*u.Unit(unit)
+                try:
+                    # FIXME: this is too slow, find a better way!
+                    unit_bkp = self.xarr.unit
+                    self.xarr.convert_to_unit(unit)
+                    # NOTE: if in a pitch, consider using this:
+                    # unit_high.to('pixel', self.xarr.equivalencies)
+                except u.core.UnitConversionError as err:
+                    raise type(err)(str(err) + "\nConsider setting, e.g.:\n"
+                            "SubCube.xarr.velocity_convention = 'radio'\n"
+                            "and\nSubCube.xarr.refX = line_freq*u.GHz")
+                index_low  = self.xarr.x_to_pix(unit_low)
+                index_high = self.xarr.x_to_pix(unit_high)
+                self.xarr.convert_to_unit(unit_bkp)
+            else: 
+                try:
+                    index_low, index_high = int(low.value ),\
+                                            int(high.value)
+                except AttributeError:
+                    index_low, index_high = int(low), int(high)
+
+            # so this also needs to be sorted if the axis goes in reverse
+            index_low, index_high = sort([index_low, index_high])
+
+            mask[index_low:index_high] = True
+
+        return mask
+
+    def get_rms_map(self, noise_mask=None):
         """
         Make an rms estimate, will try to find the noise channels in
-        the input values or in class instances. If noise channels are
-        not identified, defaults to calculating rms of all channels.
-        """
-        # TODO: implement sigal masks!
-        #       for a gaussian, they can be 
-        #       calculated from guess_grids!
+        the input values or in class instances. If noise mask is not
+        not given, defaults to calculating rms of all channels.
 
-        rms_map = self.cube.std(axis=0) # this is so wroooooooong I can't even
+        Parameters
+        ----------
+        noise_mask : dtype=bool numpy.array of SubCube.xarr size
+                     If specified, used as a mask to get channels with noise.
+
+        Returns
+        -------
+        rms_map : numpy.array, also stored under SubCube.rms_map
+        """
+        if noise_mask is None:
+            # will calculate rms of all channels
+            # TODO: throw a warning here: this will overestimate the rms!
+            noise_mask = np.array([True]*self.xarr.size)
+        rms_map = self.cube[noise_mask,:,:].std(axis=0)
         self._rms_map = rms_map
         return rms_map
 
-    def get_signal_map(self, signal_heads=None, 
-                       signal_tails=None, unit='km/s'):
+    def get_signal_map(self, signal_mask=None):
         """
-        Make a signal strength estimate. Currently just selects maximum 
-        value of the all channels, mimicking pyspeckit approach. 
-        Will try to improve it soon.
+        Make a signal strength estimate. If signal mask is not
+        not given, defaults to maximal signal on all channels.
+
+        Parameters
+        ----------
+        signal_mask : dtype=bool numpy.array of SubCube.xarr size
+                      If specified, used as a mask to get channels with signal.
+
+        Returns
+        -------
+        signal_map : numpy.array, also stored under SubCube.signal_map
         """
-        # TODO: implement sigal masks!
-        #       for a gaussian, they can be 
-        #       calculated from guess_grids!
-        signal_map = self.cube.max(axis=0)
+        if signal_mask is None:
+            # will calculate signal strength as a max of all channels
+            # TODO: throw a warning here: this might overestimate the signal!
+            signal_mask = np.array([True]*self.xarr.size)
+        signal_map = self.cube[signal_mask,:,:].max(axis=0)
         self._signal_map = signal_map
         return signal_map
 
