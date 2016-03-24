@@ -17,12 +17,8 @@ class SubCube(pyspeckit.Cube):
 
     Is designed to have methods that operate within a single spectral model.
     """
-    def __init___(self, *args):
-        super(SubCube, self).__init__(*args)
-
-        # FIXME: why isn't the block below executed?
-        #        probably I don't get the super inheritance
-        raise BadBadError
+    def __init__(self, *args, **kwargs):
+        super(SubCube, self).__init__(*args, **kwargs)
 
         # because that UnitConversionError pops up way too often
         if self.xarr.velocity_convention is None:
