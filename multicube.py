@@ -197,7 +197,7 @@ class SubCube(pyspeckit.Cube):
         #
         # + First milestone  : make the blind iteration over the spectra,
         #                      have some winner-takes-it-all selection in place
-        # - Second milestone : implement the (still broken) snr mask
+        # + Second milestone : implement the snr mask
         # - Third milestone  : xy_list functionality, pixel coordinates only
         # - Fourth milestone : extend to all possible model_grid shapes
         #
