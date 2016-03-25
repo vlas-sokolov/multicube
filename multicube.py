@@ -7,6 +7,7 @@ import numpy as np
 import astropy.units as u
 import pyspeckit
 
+
 # TODO: make informative log/on-screen messages
 #       about what's being done to the subcubes
 
@@ -39,16 +40,30 @@ class SubCube(pyspeckit.Cube):
         """
         Tie a model to a SubCube. Didn't test it
         on anything but gaussian fitter so far.
+        Yeap, I don't understand how models work.
         """
         try:
             allowed_fitters = self.specfit.Registry.multifitters
             self.specfit.fitter = allowed_fitters[fit_type]
         except KeyError:
-            raise ValueError('Unknown fit type: %s\n'
+            # TODO: get other models through add_fitter Registry method!
+            raise ValueError('Unsupported fit type: %s\n'
                              'Choose one from %s' 
                              % (fit_type, allowed_fitters.keys()))
         self.specfit.fittype = fit_type
         self.fittype = fit_type
+
+    def make_guess_grid(self, parlims):
+        """
+        Goal:
+        Given parameter ranges and a finesse parameter, generate a grid of 
+        guesses in a paramener space to be iterated upon in self.best_guess
+        
+        Not implemented yet
+
+        Maybe if parlimits arg is None we can look into parinfo?
+        """
+        raise NotImplementedError
 
     def generate_model(self, guess_grid=None):
         """
@@ -88,8 +103,10 @@ class SubCube(pyspeckit.Cube):
         #        d) an N*XY*par mess: should not proceed without
         #           vectorization! it will simply be too slow :/
         if guess_grid is None:
-            # TODO: what to do if the guess grid is not in place?
-            guess_grid = self.guess_grid
+            try:
+                guess_grid = self.guess_grid
+            except AttributeError:
+                raise RuntimeError("Can't find the guess grid to use,")
 
         # TODO: this if/elif Christmas tree is ugly, 
         #       there should be a smarter way to do this
@@ -188,14 +205,29 @@ class SubCube(pyspeckit.Cube):
             raise NotImplementedError("Sorry, still working on it!")
         else:
             # commence the invasion!
-            residual = (self.cube - model_grid).std(axis=0)
-            if ~np.isnan(residual).any():
+            self.residual = (self.cube - model_grid).std(axis=0)
+
+            # NOTE: np.array > None returns an all-True mask
+            snr_mask = self.get_snr_map() > sn_cut
+            try:
+                best = self.residual[snr_mask].min()
+            except ValueError:
+                raise ValueError("Oh gee, something broke. "
+                                 "Was SNR cutoff too high?" )
+            # TODO: catch edge cases, e.g. no valid points found
+            if np.isnan(self.residual).all():
                 # FIXME: throw warning for all-NaN case
-                return
-            self.residual = residual
-            vmin, (xmin,ymin) = residual.min(), np.where(residual==residual.min())
+                raise ValueError("All NaN residual encountered.")
+            vmin, (xmin,ymin) = best, np.where(self.residual==best)
             print "Best guess at %.2f on (%i, %i)" % (vmin, xmin, ymin)
             return vmin, (xmin, ymin)
+
+    def get_slice_mask(self, mask2d):
+        """
+        In case we ever want to apply a 3d mask to a whole cube.
+        """
+        mask3d = dat[np.repeat([mask2d],self.xarr.size,axis=0)]
+        return mask3d
 
     def get_snr_map(self, signal=None, noise=None, unit='km/s', 
                     signal_mask=None, noise_mask=None          ):
@@ -264,7 +296,7 @@ class SubCube(pyspeckit.Cube):
         # no need to care about units at this point
         snr_map = self.get_signal_map(signal_mask) / \
                              self.get_rms_map(noise_mask)
-        self._snr_map = snr_map
+        self.snr_map = snr_map
         return snr_map
 
     def get_mask(self, low_indices, high_indices, unit):
@@ -297,7 +329,7 @@ class SubCube(pyspeckit.Cube):
                     index_low, index_high = int(low), int(high)
 
             # so this also needs to be sorted if the axis goes in reverse
-            index_low, index_high = sort([index_low, index_high])
+            index_low, index_high = np.sort([index_low, index_high])
 
             mask[index_low:index_high] = True
 
