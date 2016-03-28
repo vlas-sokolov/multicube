@@ -7,7 +7,6 @@ import numpy as np
 import astropy.units as u
 import pyspeckit
 
-
 # TODO: make informative log/on-screen messages
 #       about what's being done to the subcubes
 
@@ -53,17 +52,77 @@ class SubCube(pyspeckit.Cube):
         self.specfit.fittype = fit_type
         self.fittype = fit_type
 
-    def make_guess_grid(self, parlims):
+    # generate initial guess grid from #
+    # a specified function, parameters #
+    #####~~~~  and resolution ~~~~~#####
+    #//                              \\##################
+    # Inputs:                                           #
+    # - func: function to be modeled                    #
+    # - xvals: x-values of the func to be returned      #
+    # - param: parameters accepted by func              #
+    # - varlst: list of parameter names to be modeled   #
+    # - minlst: varlst-shaped min values for parameters #
+    # - maxlst: varlst-shaped max values for parameters #
+    # - reslst: varlst-shaped number of equally spaced  #
+    #   guesses within minlst and maxlst                #
+    #####################################################
+    def make_guess_grid(self, minpars, maxpars, finesse, 
+            fixed=None, limitedmin=None, limitedmax=None):
         """
         Goal:
         Given parameter ranges and a finesse parameter, generate a grid of 
         guesses in a paramener space to be iterated upon in self.best_guess
-        
-        Not implemented yet
-
         Maybe if parlimits arg is None we can look into parinfo?
+
+        Parameters
+        ----------
+        minpars : an interable contatining minimal parameter values
+
+        maxpars : an interable contatining maximal parameter values
+
+        finesse : an integer setting the size of cells between minimal
+                  and maximal values in the resulting guess grid
+
+        fixed : an iterable of booleans setting whether or not to fix the
+                fitting parameters. Will be passed to Cube.fiteach, defaults
+                to an array of False-s.
+
+        limitedmin : an iterable of booleans controlling if the fit fixed
+                     the minimal boundary of from minpars.
+
+        limitedmax : an iterable of booleans controlling if the fit fixed
+                     the maximal boundary of from maxpars.
+
+        Returns
+        -------
+        guess_grid : a grid of guesses to use for SubCube.generate_model
+
+        In addition, it saves a number of variables under self as a dictionary
+        passed later to Cube.fiteach as additional arguments, with keywords:
+        ['fixed', 'limitedmin', 'limitedmax', 'minpars', 'maxpars']
         """
-        raise NotImplementedError
+        minpars, maxpars = np.asarray([minpars, maxpars])
+        truths, falses = np.ones(minpars.shape, dtype=bool), \
+                         np.zeros(minpars.shape, dtype=bool)
+        
+        fixed = falses if fixed is None else fixed
+        limitedmin = truths if limitedmin is None else limitedmin
+        limitedmax = truths if limitedmax is None else limitedmax
+        self.fiteach_args = {'fixed'     : fixed,
+                             'limitedmin': limitedmin,
+                             'limitedmax': limitedmax,
+                             'minpars'   : minpars,
+                             'maxpars'   : maxpars    }
+ 
+        # TODO: make sure you return the same shape!
+        input_shape = minpars.shape
+
+        minpars, maxpars = minpars.reshape(-1,1), maxpars.reshape(-1,1)
+        generator = np.linspace(0,1,finesse)
+        guess_grid = minpars + (maxpars - minpars) * generator
+        guess_grid = guess_grid.reshape((list(input_shape)+[finesse]))
+        self.guess_grid = guess_grid
+        return guess_grid
 
     def generate_model(self, guess_grid=None):
         """
@@ -110,6 +169,7 @@ class SubCube(pyspeckit.Cube):
 
         # TODO: this if/elif Christmas tree is ugly, 
         #       there should be a smarter way to do this
+        # TODO: yup, of course! use np.ndenumerate
         if len(guess_grid.shape)==4 \
            and self.cube.shape[1] in guess_grid.shape \
            and self.cube.shape[1] in guess_grid.shape:
