@@ -63,3 +63,15 @@ def download_test_cube(outfile='test.fits'):
         # os.rename doesn't like cross-device links
         import shutil
         shutil.move(tmp_path, outfile)
+
+    def get_ncores()
+    """
+    Try to get the number of cpu cores
+    """
+        try:
+            import multiprocessing
+            ncores = multiprocessing.cpu_count()
+        except ImportError:
+            ncores = 1
+            
+        return ncores
