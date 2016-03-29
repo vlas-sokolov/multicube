@@ -52,24 +52,9 @@ class SubCube(pyspeckit.Cube):
         self.specfit.fittype = fit_type
         self.fittype = fit_type
 
-    # generate initial guess grid from #
-    # a specified function, parameters #
-    #####~~~~  and resolution ~~~~~#####
-    #//                              \\##################
-    # Inputs:                                           #
-    # - func: function to be modeled                    #
-    # - xvals: x-values of the func to be returned      #
-    # - param: parameters accepted by func              #
-    # - varlst: list of parameter names to be modeled   #
-    # - minlst: varlst-shaped min values for parameters #
-    # - maxlst: varlst-shaped max values for parameters #
-    # - reslst: varlst-shaped number of equally spaced  #
-    #   guesses within minlst and maxlst                #
-    #####################################################
     def make_guess_grid(self, minpars, maxpars, finesse, 
             fixed=None, limitedmin=None, limitedmax=None):
         """
-        Goal:
         Given parameter ranges and a finesse parameter, generate a grid of 
         guesses in a paramener space to be iterated upon in self.best_guess
         Maybe if parlimits arg is None we can look into parinfo?
