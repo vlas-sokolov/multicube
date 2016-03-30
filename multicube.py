@@ -271,7 +271,7 @@ class SubCube(pyspeckit.Cube):
         """
         In case we ever want to apply a 3d mask to a whole cube.
         """
-        mask3d = dat[np.repeat([mask2d],self.xarr.size,axis=0)]
+        mask3d = np.repeat([mask2d],self.xarr.size,axis=0)
         return mask3d
 
     def get_snr_map(self, signal=None, noise=None, unit='km/s', 
