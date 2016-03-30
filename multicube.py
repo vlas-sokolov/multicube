@@ -398,7 +398,7 @@ class SubCube(pyspeckit.Cube):
         if noise_mask is None:
             # will calculate rms of all channels
             # TODO: throw a warning here: this will overestimate the rms!
-            noise_mask = np.array([True]*self.xarr.size)
+            noise_mask = np.ones(self.xarr.shape, dtype=bool)
         rms_map = self.cube[noise_mask,:,:].std(axis=0)
         self._rms_map = rms_map
         return rms_map
@@ -420,7 +420,7 @@ class SubCube(pyspeckit.Cube):
         if signal_mask is None:
             # will calculate signal strength as a max of all channels
             # TODO: throw a warning here: this might overestimate the signal!
-            signal_mask = np.array([True]*self.xarr.size)
+            signal_mask = np.array(self.xarr.shape, dtype=bool)
         signal_map = self.cube[signal_mask,:,:].max(axis=0)
         self._signal_map = signal_map
         return signal_map
