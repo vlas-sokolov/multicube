@@ -35,6 +35,13 @@ class SubCube(pyspeckit.Cube):
         self.guess_grid = None
         self.model_grid = None
 
+    def info(self):
+        print "Shapes of the arrays:\n" \
+              "\t--> Data cube:\t{}\n".format(self.cube.shape) + \
+              "\t--> Guess grid:\t{}\n".format(self.guess_grid.shape) + \
+              "\t--> Model grid:\t{}\n".format(self.model_grid.shape) + \
+              "\t--> SNR map:\t{}\n".format(self.snr_map.shape)
+
     def update_model(self, fit_type='gaussian'):
         """
         Tie a model to a SubCube. Didn't test it
@@ -127,6 +134,7 @@ class SubCube(pyspeckit.Cube):
                      3) A guess cube of (Y, X, M) size
                      4) An (N, Y, X, M)-shaped array, to 
                         iterate over cubes of guesses.
+                     If not set, SubCube.guess_grid is used.
 
         WARNING: (3) and (4) aren't implemented yet.
 
@@ -513,6 +521,8 @@ def main():
     sc.update_model('gaussian')
     guesses = [0.5, 0.2, 0.8]
 
+    sc.get_snr_map()
+
     npars = len(guesses)
     parcube_size = sc.cube.size/sc.shape[0]
     parcube_shape = (npars, sc.cube.shape[1], sc.cube.shape[2])
@@ -520,10 +530,9 @@ def main():
     sc.guess_grid = parflat.reshape(*parcube_shape,order='F')
 
     sc.generate_model()
-    sc.best_guess()
     
-    #sc.fiteach(guesses=sc.guess_grid, start_from_pixel=(5,5))
-    #sc.mapplot()
+    sc.info()
+    sc.best_guess()
 
 if __name__ == "__main__":
 	main()
