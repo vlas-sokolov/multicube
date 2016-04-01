@@ -36,11 +36,17 @@ class SubCube(pyspeckit.Cube):
         self.model_grid = None
 
     def info(self):
+        def getinfo(target):
+            try:
+                return getattr(getattr(self,target), 'shape')
+            except AttributeError:
+                return 'N/A'
+                pass
         print "Shapes of the arrays:\n" \
-              "\t--> Data cube:\t{}\n".format(self.cube.shape) + \
-              "\t--> Guess grid:\t{}\n".format(self.guess_grid.shape) + \
-              "\t--> Model grid:\t{}\n".format(self.model_grid.shape) + \
-              "\t--> SNR map:\t{}\n".format(self.snr_map.shape)
+              "--> Data cube:\t{}\n".format(getinfo('cube'))        + \
+              "--> Guess grid:\t{}\n".format(getinfo('guess_grid')) + \
+              "--> Model grid:\t{}\n".format(getinfo('model_grid')) + \
+              "--> SNR map:\t{}\n".format(getinfo('snr_map'))
 
     def update_model(self, fit_type='gaussian'):
         """
@@ -113,6 +119,9 @@ class SubCube(pyspeckit.Cube):
         generator = np.linspace(0,1,finesse)
         guess_grid = minpars + (maxpars - minpars) * generator
         guess_grid = guess_grid.reshape((list(input_shape)+[finesse]))
+        # this flips all the dimensions, might have some troubles should 
+        # I want to scale this up later for a multidimensional case
+        guess_grid = guess_grid.T
         self.guess_grid = guess_grid
         return guess_grid
 
@@ -160,53 +169,18 @@ class SubCube(pyspeckit.Cube):
             except AttributeError:
                 raise RuntimeError("Can't find the guess grid to use,")
 
-        # TODO: this if/elif Christmas tree is ugly, 
-        #       there should be a smarter way to do this
-        # TODO: yup, of course! use np.ndenumerate
-        if len(guess_grid.shape)==4 \
-           and self.cube.shape[1] in guess_grid.shape \
-           and self.cube.shape[1] in guess_grid.shape:
-            # FIXME: this allows for [100,2,4] guess_grid to pass
-            #        for an  [xarr.size, 100, 100] cube. Do it right!
-            #
-            # TODO: implement cube-like guessing grids!
+        # make it at least 2d, otherwise will iterate over empty tuple:
+        guess_grid = np.atleast_2d(guess_grid)
+        grid_shape = guess_grid.shape[:-1]
+        model_grid = np.empty(shape=list(grid_shape)+[self.xarr.size])
+        # iterate over all possible guesses 
+        for idx in np.ndindex(grid_shape):
+            model_grid[idx] = \
+                self.specfit.get_full_model(pars=guess_grid[idx])
 
-            # this is a good place to re-implement get_modelcube
-            # as a method that takes modelcube as a function,
-            # or just bait and switch guesses into inherited 
-            # Cube.parcube and call get_modelcube . . .
-
-            # Will do the former for now, but it may clash later
-            # when I will finish up MultiCube.multiplot()
-
-            raise NotImplementedError('Someone should remind me '
-                                      'to write this up. Please?')
-        if len(guess_grid.shape)==3 \
-           and self.cube.shape[1] in guess_grid.shape \
-           and self.cube.shape[1] in guess_grid.shape:
-            # FIXME: this allows for [100,2,4] guess_grid to pass
-            #        for an [xarr.size, 100, 100] cube. Do it right!
-            #
-            yy, xx = np.indices(self.cube.shape[1:])
-            model_grid = np.zeros_like(self.cube)
-
-            # TODO: vectorize this please please please?
-            for x,y in zip(xx.flat,yy.flat):
-                model_grid[:,y,x] = \
-                       self.specfit.get_full_model(pars=self.guess_grid[:,y,x])
-
-        elif len(guess_grid.shape)==2:
-            # set up the modelled spectrum grid
-            model_grid = np.empty(shape=(guess_grid.shape[0], 
-                                         self.xarr.size      ))
-            for i, par in enumerate(guess_grid):
-                model_grid[i] = self.specfit.get_full_model(pars=par)
-        elif len(guess_grid.shape)==1:
-            par = guess_grid
-            model_grid = self.specfit.get_full_model(pars=par)
-        else:
-            raise IndexError('Guess grid size can not be matched'
-                             ' to either cube or spectrum size. ')
+        # TODO: raise it when appropriate
+        #raise IndexError('Guess grid size can not be matched'
+        #                 ' to either cube or spectrum size. ')
 
         self.model_grid = model_grid
         return model_grid
@@ -519,16 +493,15 @@ def main():
         sc = SubCube('foo.fits')
 
     sc.update_model('gaussian')
+
     guesses = [0.5, 0.2, 0.8]
+    minpars = np.array(guesses)/2
+    maxpars = np.array(guesses)*2
+    finesse = 5
 
     sc.get_snr_map()
 
-    npars = len(guesses)
-    parcube_size = sc.cube.size/sc.shape[0]
-    parcube_shape = (npars, sc.cube.shape[1], sc.cube.shape[2])
-    parflat = np.hstack(np.repeat([guesses],parcube_size,axis=0))
-    sc.guess_grid = parflat.reshape(*parcube_shape,order='F')
-
+    sc.make_guess_grid(minpars, maxpars, finesse)
     sc.generate_model()
     
     sc.info()
