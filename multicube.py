@@ -46,6 +46,7 @@ class SubCube(pyspeckit.Cube):
               "--> Data cube:\t{}\n".format(getinfo('cube'))        + \
               "--> Guess grid:\t{}\n".format(getinfo('guess_grid')) + \
               "--> Model grid:\t{}\n".format(getinfo('model_grid')) + \
+              "--> Result rms:\t{}\n".format(getinfo('residual_rms')) + \
               "--> SNR map:\t{}\n".format(getinfo('snr_map'))
 
     def update_model(self, fit_type='gaussian'):
@@ -172,7 +173,7 @@ class SubCube(pyspeckit.Cube):
         # make it at least 2d, otherwise will iterate over empty tuple:
         guess_grid = np.atleast_2d(guess_grid)
         grid_shape = guess_grid.shape[:-1]
-        model_grid = np.empty(shape=list(grid_shape)+[self.xarr.size])
+        model_grid = np.empty(shape=grid_shape+tuple([self.xarr.size]))
         # iterate over all possible guesses 
         for idx in np.ndindex(grid_shape):
             model_grid[idx] = \
@@ -229,25 +230,39 @@ class SubCube(pyspeckit.Cube):
         # - Fourth milestone : extend to all possible model_grid shapes
         #
         if model_grid.shape!=self.cube.shape:
-            raise NotImplementedError("Sorry, still working on it!")
+            # TODO: we aren't sure how to propagate the models on the
+            #       cube, which means that we simple have a 1d assembly
+            #       of models to be tested. This then should be unfolded
+            #       to the shape of the cube x nmodels
+            # inserting X and Y axes
+            model_grid = model_grid[:,:,None,None]
+            cube_shape = self.cube.shape[1:]
+            for axnum, axlen in enumerate(cube_shape):
+                model_grid = np.repeat(model_grid, axlen, axis=axnum+2)
+            #raise NotImplementedError("Sorry, still working on it!")
         else:
+            model_grid = model_grid.reshape(1,*model_grid.shape)
             # commence the invasion!
-            self.residual = (self.cube - model_grid).std(axis=0)
+        residual_rms = np.empty(tuple([model_grid.shape[0]])+
+                                          model_grid.shape[2:])
+        for i,model_cube in enumerate(model_grid):
+            residual_rms[i] = (self.cube - model_cube).std(axis=0)
 
             # NOTE: np.array > None returns an all-True mask
             snr_mask = self.get_snr_map() > sn_cut
             try:
-                best = self.residual[snr_mask].min()
+                best = residual_rms[i][snr_mask].min()
             except ValueError:
                 raise ValueError("Oh gee, something broke. "
                                  "Was SNR cutoff too high?" )
             # TODO: catch edge cases, e.g. no valid points found
-            if np.isnan(self.residual).all():
+            if np.isnan(residual_rms[i]).all():
                 # FIXME: throw warning for all-NaN case
                 raise ValueError("All NaN residual encountered.")
-            vmin, (xmin,ymin) = best, np.where(self.residual==best)
+            vmin, (xmin,ymin) = best, np.where(residual_rms[i]==best)
             print "Best guess at %.2f on (%i, %i)" % (vmin, xmin, ymin)
             return vmin, (xmin, ymin)
+        self.residual_rms = residual_rms
 
     def get_slice_mask(self, mask2d):
         """
@@ -504,8 +519,8 @@ def main():
     sc.make_guess_grid(minpars, maxpars, finesse)
     sc.generate_model()
     
-    sc.info()
     sc.best_guess()
+    sc.info()
 
 if __name__ == "__main__":
 	main()
