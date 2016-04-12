@@ -186,7 +186,9 @@ class SubCube(pyspeckit.Cube):
         guess_grid = np.atleast_2d(guess_grid)
         grid_shape = guess_grid.shape[:-1]
         model_grid = np.empty(shape=grid_shape+tuple([self.xarr.size]))
-        # iterate over all possible guesses 
+
+        # NOTE: this for loop is the performance bottleneck!
+        # would be nice if I could broadcast grid_grid to n_modelfunc...
         for idx in np.ndindex(grid_shape):
             model_grid[idx] = \
                 self.specfit.get_full_model(pars=guess_grid[idx])
@@ -242,7 +244,7 @@ class SubCube(pyspeckit.Cube):
         # - Fourth milestone : extend to all possible model_grid shapes
         #
         if model_grid.shape!=self.cube.shape:
-            # TODO: we aren't sure how to propagate the models on the
+            # NOTE: we aren't sure how to propagate the models on the
             #       cube, which means that we simple have a 1d assembly
             #       of models to be tested. This then should be unfolded
             #       to the shape of the cube x nmodels
@@ -251,7 +253,6 @@ class SubCube(pyspeckit.Cube):
             cube_shape = self.cube.shape[1:]
             for axnum, axlen in enumerate(cube_shape):
                 model_grid = np.repeat(model_grid, axlen, axis=axnum+2)
-            #raise NotImplementedError("Sorry, still working on it!")
         else:
             model_grid = model_grid.reshape(1,*model_grid.shape)
             # commence the invasion!
