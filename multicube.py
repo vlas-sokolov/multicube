@@ -10,6 +10,12 @@ import pyspeckit
 # TODO: make informative log/on-screen messages
 #       about what's being done to the subcubes
 
+# TODO: redefine SpectralCube.py#L795-L823 to
+#       include the option of choosing between
+#       the guesses in the middle of fiteach run
+
+# TODO: 
+
 class SubCube(pyspeckit.Cube):
     """
     An extention of Cube, tinkered to be an instance of MultiCube, from which 
@@ -115,15 +121,22 @@ class SubCube(pyspeckit.Cube):
  
         # TODO: make sure you return the same shape!
         input_shape = minpars.shape
+        npars = minpars.size
 
         minpars, maxpars = minpars.reshape(-1,1), maxpars.reshape(-1,1)
+        # TODO: allow finesse to be a vector! 
+        # also, guessspace isn't a good var name :C
         generator = np.linspace(0,1,finesse)
-        guess_grid = minpars + (maxpars - minpars) * generator
-        guess_grid = guess_grid.reshape((list(input_shape)+[finesse]))
+        guessspace = minpars + (maxpars - minpars) * generator
+        guessspace = list(guessspace.reshape((list(input_shape)+[finesse])))
+
+        nguesses = np.prod(map(len,guessspace))
+        guess_grid = np.array(np.meshgrid(*guessspace)).reshape(npars, nguesses).T
+        
         # this flips all the dimensions, might have some troubles should 
         # I want to scale this up later for a multidimensional case
-        guess_grid = guess_grid.T
         self.guess_grid = guess_grid
+
         return guess_grid
 
     def generate_model(self, guess_grid=None):
@@ -257,11 +270,17 @@ class SubCube(pyspeckit.Cube):
                                  "Was SNR cutoff too high?" )
             # TODO: catch edge cases, e.g. no valid points found
             if np.isnan(residual_rms[i]).all():
-                # FIXME: throw warning for all-NaN case
+                # FIXME: throw a warning for all-NaN case
                 raise ValueError("All NaN residual encountered.")
             vmin, (xmin,ymin) = best, np.where(residual_rms[i]==best)
-            print "Best guess at %.2f on (%i, %i)" % (vmin, xmin, ymin)
-            return vmin, (xmin, ymin)
+
+        [x_max_snr],[y_max_snr] = np.where(self.snr_map==self.snr_map.max())
+        best = residual_rms[:,x_max_snr,y_max_snr].min()
+        which_best = np.where(residual_rms[:,x_max_snr,y_max_snr]==best)[0][0]
+        print "Best model: #%i giving rms=%.2f for" \
+               "highest SNR position at (%i,%i)" \
+                       % (which_best, best, x_max_snr, y_max_snr)
+        self.best_model = which_best
         self.residual_rms = residual_rms
 
     def get_slice_mask(self, mask2d):
@@ -422,6 +441,63 @@ class SubCube(pyspeckit.Cube):
         self._signal_map = signal_map
         return signal_map
 
+    def get_chi_squared(self, sigma = None):
+        """
+        Computes a chi-squared map from modelcube / parinfo.
+        """
+        if self._modelcube is None:
+            self.get_modelcube()
+
+        if sigma is None:
+            sigma = self._rms_map
+
+        chisq = ((self.cube - self._modelcube)**2).sum(axis=0)/sigma**2
+
+        self.chi_squared = chisq
+        return chisq
+
+    def chi_squared_stats(self):
+        """
+        Compute chi^2 statistics for an X^2 distribution.
+        This is essentially a chi^2 test for normality being
+        computed on residual from the fit. I'll rewrite it 
+        into a chi^2 goodness of fit test when I'll get around
+        to it.
+
+        Returns
+        -------
+        p_chisq : p-values for X^2 distribution
+
+        dof : degrees of freedom for chi^2
+        """
+        # ------------------- TODO --------------------- #
+        # rewrite it to a real chi-square goodness of fit!
+        # this is essentially a chi^2 test for normality
+        from scipy.stats import chisqprob
+        
+        # TODO: for Pearson's chisq test it would be
+        # dof = self.xarr.size - self.specfit.fitter.npars - 1
+
+        # TODO: derive an expression for this "Astronomer's X^2" dof.
+        dof = self.xarr.size
+        p_chisq = chisqprob(self.chi_squared, dof)
+        
+        return p_chisq, dof
+
+    def get_likelihood(self, sigma = None):
+        """
+        Computes log-likelihood map from chi-squared
+        """
+        raise NotImplementedError
+    #    if sigma is None:
+    #        sigma = self._rms_map
+
+    #    # TODO: resolve extreme exponent values or risk overflowing
+    #    likelihood=np.exp(-self.chi_squared/2)*(sigma*np.sqrt(2*np.pi))**(-self.xarr.size)
+    #    self.likelihood = np.log(likelihood)
+
+    #    return np.log(likelihood)
+
 class MultiCube:
     def __init__(self, *args):
         """
@@ -497,30 +573,52 @@ class MultiCube:
 
 # NOTE: a working example, generates a grid
 #       of spectra form a grid of parameters
-#
-# TODO: remove this, this isn't one of your km-long scripts!
+# TODO: rewrite into a jupyter notebook example!
 def main():
     try:
         sc = SubCube('foo.fits')
     except IOError:
         from astro_toolbox import make_test_cube
-        make_test_cube((100,10,10), outfile='foo.fits', sigma=(10,5))
+        make_test_cube((100,10,10), outfile='foo.fits', 
+                sigma=(10,5), writeSN=True)
         sc = SubCube('foo.fits')
 
     sc.update_model('gaussian')
 
     guesses = [0.5, 0.2, 0.8]
-    minpars = np.array(guesses)/2
-    maxpars = np.array(guesses)*2
-    finesse = 5
+    minpars = np.array(guesses)/20
+    maxpars = np.array(guesses)*10
+    # TODO: this should be allowed to be a vector!
+    finesse = 10
 
+    print "Estimating SNR . . ."
     sc.get_snr_map()
 
+    print "Making a guess grid based on parameter permutations . . ."
     sc.make_guess_grid(minpars, maxpars, finesse)
+    print "Generating spectral models for all %i guesses . . ." \
+                        % sc.guess_grid.shape[0]
     sc.generate_model()
     
+    print "Calculating the best guess on the grid . . ."
     sc.best_guess()
     sc.info()
+
+    from astro_toolbox import get_ncores
+    sc.fiteach(guesses   = sc.guess_grid[sc.best_model],
+               multicore = get_ncores(),
+               verbose=0,
+               #**sc.fiteach_args # FIXME: crashes, why?
+                )
+    sc.get_chi_squared(sigma=sc.header['RMSLVL'])
+    #sc.get_likelihood(sigma=sc._rms_map)
+    chisq, dof = sc.chi_squared_stats()
+    plt.rc('text', usetex=True)
+    sc.mapplot()
+    sc.mapplot.plane = chisq
+    sc.mapplot(estimator=None, cmap='viridis', vmin=0, vmax=1)
+    labtxt = r'$\chi^2\mathrm{~probability~(%i~d.o.f.)}$' % dof
+    sc.mapplot.FITSFigure.colorbar.set_axis_label_text(labtxt)
 
 if __name__ == "__main__":
 	main()
