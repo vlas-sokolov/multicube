@@ -14,11 +14,9 @@ import pyspeckit
 #       include the option of choosing between
 #       the guesses in the middle of fiteach run
 
-# TODO: 
-
 class SubCube(pyspeckit.Cube):
     """
-    An extention of Cube, tinkered to be an instance of MultiCube, from which 
+    An extension of Cube, tinkered to be an instance of MultiCube, from which 
     it receives references to instances of pyspeckit.Cube that do not depend 
     on a spectral model chosen (so that parent MultiCube doesn't weigh so much)
 
@@ -76,14 +74,14 @@ class SubCube(pyspeckit.Cube):
             fixed=None, limitedmin=None, limitedmax=None):
         """
         Given parameter ranges and a finesse parameter, generate a grid of 
-        guesses in a paramener space to be iterated upon in self.best_guess
+        guesses in a parameter space to be iterated upon in self.best_guess
         Maybe if parlimits arg is None we can look into parinfo?
 
         Parameters
         ----------
-        minpars : an interable contatining minimal parameter values
+        minpars : an iterable containing minimal parameter values
 
-        maxpars : an interable contatining maximal parameter values
+        maxpars : an iterable containing maximal parameter values
 
         finesse : an integer setting the size of cells between minimal
                   and maximal values in the resulting guess grid
@@ -169,7 +167,7 @@ class SubCube(pyspeckit.Cube):
         """
         # NOTE: 2016.03.22: currently works for (a) and (c), see below
 
-        # TODO: test for all posible model grid sizes,
+        # TODO: test for all possible model grid sizes,
         #       and write up proper error handling!
         #       things you should be able receive:
         #        a) a single par-iterable
@@ -201,7 +199,7 @@ class SubCube(pyspeckit.Cube):
 
     def best_guess(self, model_grid=None, xy_list=None, sn_cut=None):
         """
-        For a grid of intitial guesses, determine the optimal one based 
+        For a grid of initial guesses, determine the optimal one based 
         on the preliminary residual of the specified spectral model.
 
         Parameters
@@ -310,7 +308,7 @@ class SubCube(pyspeckit.Cube):
                 Same as `signal` otherwise.
 
         unit : a unit for specifying the channels. Defaults to 'km/s'.
-               If set to 'pixel', actualy channel numbers are selected.
+               If set to 'pixel', actual channel numbers are selected.
 
         signal_mask : dtype=bool numpy.array of SubCube.xarr size
                       If specified, used as a mask to get channels with signal.
@@ -325,7 +323,7 @@ class SubCube(pyspeckit.Cube):
         snr_map : numpy.array
                   Also stored under SubCube.snr_map
         """
-        # will overwrite this lates if no ranges were actually given
+        # will override this later if no ranges were actually given
         unit = {'signal': unit, 'noise': unit}
 
         # get rule of thirds signal and noise if no ranges were given
@@ -367,7 +365,7 @@ class SubCube(pyspeckit.Cube):
         mask = np.array([False]*self.xarr.size)
         for low, high in zip(low_indices, high_indices):
             # you know this is a hack right?
-            # also, undocumented funcitonality is bad and you should feel bad
+            # also, undocumented functionality is bad and you should feel bad
             if unit not in ['pix','pixel','pixels','chan','channel','channels']:
                 # converting whatever units we're given to pixels
                 unit_low, unit_high = low*u.Unit(unit), high*u.Unit(unit)
@@ -535,7 +533,7 @@ class MultiCube:
 
     def spawn(self, model, guesses=None):
         """
-        Add a new model and a SubCube for it thorugh Cube()
+        Add a new model and a SubCube for it through Cube()
         The idea is to pass a reference to large data instances 
         of SuperCube to avoid excessive memory usage.
 
