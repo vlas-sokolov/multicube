@@ -83,8 +83,9 @@ class SubCube(pyspeckit.Cube):
 
         maxpars : an iterable containing maximal parameter values
 
-        finesse : an integer setting the size of cells between minimal
-                  and maximal values in the resulting guess grid
+        finesse : an integer or 1xNpars list/array setting the size 
+                  of cells between minimal and maximal values in 
+                  the resulting guess grid
 
         fixed : an iterable of booleans setting whether or not to fix the
                 fitting parameters. Will be passed to Cube.fiteach, defaults
@@ -121,15 +122,15 @@ class SubCube(pyspeckit.Cube):
         input_shape = minpars.shape
         npars = minpars.size
 
-        minpars, maxpars = minpars.reshape(-1,1), maxpars.reshape(-1,1)
-        # TODO: allow finesse to be a vector! 
-        # also, guessspace isn't a good var name :C
-        generator = np.linspace(0,1,finesse)
-        guessspace = minpars + (maxpars - minpars) * generator
-        guessspace = list(guessspace.reshape((list(input_shape)+[finesse])))
+        # conformity for finesse: int or np.array goes in and np.array goes out
+        finesse = np.atleast_1d(finesse) * np.ones(npars)
+            
+        par_space = []
+        for i_len, i_min, i_max in zip(finesse, minpars, maxpars):
+            par_space.append(np.linspace(i_min, i_max, i_len))
 
-        nguesses = np.prod(map(len,guessspace))
-        guess_grid = np.array(np.meshgrid(*guessspace)).reshape(npars, nguesses).T
+        nguesses = np.prod(map(len,par_space))
+        guess_grid = np.array(np.meshgrid(*par_space)).reshape(npars, nguesses).T
         
         # this flips all the dimensions, might have some troubles should 
         # I want to scale this up later for a multidimensional case
@@ -475,6 +476,11 @@ class SubCube(pyspeckit.Cube):
         
         # TODO: for Pearson's chisq test it would be
         # dof = self.xarr.size - self.specfit.fitter.npars - 1
+        
+        # NOTE: likelihood function should asymptotically approach
+        #       chi^2 distribution too! Given that the whole point
+        #       of calculating chi^2 is to use it for model 
+        #       selection I should probably switch to it.
 
         # TODO: derive an expression for this "Astronomer's X^2" dof.
         dof = self.xarr.size
@@ -486,12 +492,14 @@ class SubCube(pyspeckit.Cube):
         """
         Computes log-likelihood map from chi-squared
         """
+        # self-NOTE: need to deal with chi^2 first
         raise NotImplementedError
     #    if sigma is None:
     #        sigma = self._rms_map
 
     #    # TODO: resolve extreme exponent values or risk overflowing
-    #    likelihood=np.exp(-self.chi_squared/2)*(sigma*np.sqrt(2*np.pi))**(-self.xarr.size)
+    #    likelihood=np.exp(-self.chi_squared/2)* \
+    #           (sigma*np.sqrt(2*np.pi))**(-self.xarr.size)
     #    self.likelihood = np.log(likelihood)
 
     #    return np.log(likelihood)
@@ -586,8 +594,7 @@ def main():
     guesses = [0.5, 0.2, 0.8]
     minpars = np.array(guesses)/20
     maxpars = np.array(guesses)*10
-    # TODO: this should be allowed to be a vector!
-    finesse = 10
+    finesse = 5
 
     print "Estimating SNR . . ."
     sc.get_snr_map()
