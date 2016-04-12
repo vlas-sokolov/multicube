@@ -611,11 +611,15 @@ def main():
     sc.info()
 
     from astro_toolbox import get_ncores
-    sc.fiteach(guesses   = sc.guess_grid[sc.best_model],
-               multicore = get_ncores(),
-               verbose=0,
-               #**sc.fiteach_args # FIXME: crashes, why?
-                )
+    # TODO: why does 'fixed' fitkwarg breat fiteach?
+    sc.fiteach_args.pop('fixed',None)
+    sc.fiteach(fittype        = sc.fittype,
+               guesses        = sc.guess_grid[sc.best_model],
+               multicore      = get_ncores(),
+               verbose        = 0,
+               position_order = 1/sc.snr_map,
+               **sc.fiteach_args
+               )
     sc.get_chi_squared(sigma=sc.header['RMSLVL'])
     #sc.get_likelihood(sigma=sc._rms_map)
     chisq, dof = sc.chi_squared_stats()
