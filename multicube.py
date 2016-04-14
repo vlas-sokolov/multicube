@@ -277,15 +277,16 @@ class SubCube(pyspeckit.Cube):
         [x_max_snr],[y_max_snr] = np.where(self.snr_map==self.snr_map.max())
         best = residual_rms[:,x_max_snr,y_max_snr].min()
         which_best = np.where(residual_rms[:,x_max_snr,y_max_snr]==best)[0][0]
-        print "Best model: #%i giving rms=%.2f for" \
+        print "Best model: #%i %s giving rms=%.2f for" \
                "highest SNR position at (%i,%i)" \
-                       % (which_best, best, x_max_snr, y_max_snr)
+                       % (which_best, self.guess_grid[which_best], 
+                               best, x_max_snr, y_max_snr)
         self.best_model = which_best
         self.residual_rms = residual_rms
 
     def get_slice_mask(self, mask2d):
         """
-        In case we ever want to apply a 3d mask to a whole cube.
+        In case we ever want to apply a 2d mask to a whole cube.
         """
         mask3d = np.repeat([mask2d],self.xarr.size,axis=0)
         return mask3d
@@ -456,7 +457,7 @@ class SubCube(pyspeckit.Cube):
         self.chi_squared = chisq
         return chisq
 
-    def chi_squared_stats(self):
+    def chi_squared_stats(self, plot_chisq=False):
         """
         Compute chi^2 statistics for an X^2 distribution.
         This is essentially a chi^2 test for normality being
@@ -466,7 +467,7 @@ class SubCube(pyspeckit.Cube):
 
         Returns
         -------
-        p_chisq : p-values for X^2 distribution
+        prob_chisq : probability that X^2 obeys the chi^2 distribution
 
         dof : degrees of freedom for chi^2
         """
@@ -474,7 +475,7 @@ class SubCube(pyspeckit.Cube):
         # rewrite it to a real chi-square goodness of fit!
         # this is essentially a chi^2 test for normality
         from scipy.stats import chisqprob
-        
+
         # TODO: for Pearson's chisq test it would be
         # dof = self.xarr.size - self.specfit.fitter.npars - 1
         
@@ -485,9 +486,58 @@ class SubCube(pyspeckit.Cube):
 
         # TODO: derive an expression for this "Astronomer's X^2" dof.
         dof = self.xarr.size
-        p_chisq = chisqprob(self.chi_squared, dof)
-        
-        return p_chisq, dof
+        prob_chisq = chisqprob(self.chi_squared, dof)
+
+        if plot_chisq:
+            if not plt.rcParams['text.usetex']:
+                plt.rc('text', usetex=True)
+            if self.mapplot.figure is None:
+                self.mapplot()
+            self.mapplot.plane = prob_chisq
+            self.mapplot(estimator=None, cmap='viridis', vmin=0, vmax=1)
+            labtxt = r'$\chi^2\mathrm{~probability~(%i~d.o.f.)}$' % dof
+            self.mapplot.FITSFigure.colorbar.set_axis_label_text(labtxt)
+            plt.show()
+
+        self.prob_chisq = prob_chisq
+
+        return prob_chisq, dof
+
+    def mark_bad_fits(self, ax = None, mask = None, cut = 1e-20, **kwargs):
+        """
+        Given an active axis used by Cube.mapplot, overplot 
+        pixels with bad fits with an overlay.
+
+        Can pass along a mask of bad pixels; if none is given 
+        the method tries to get its own guess from:
+        self.prob_chisq < cut
+
+        Additional keyword arguments are passed to plt.plot.
+        """
+        # setting defaults for plotting if no essentials are passed
+        ax = ax or self.mapplot.axis
+        pltkwargs = {'alpha': 0.8, 'ls': '--', 'lw': 1.5, 'c': 'r'}
+        pltkwargs.update(kwargs)
+        # because the plotting routine would attempt to change the scale
+        try:
+            ax.autoscale(False)
+        except AttributeError:
+            raise RuntimeError("Can't find an axis to doodle on.")
+
+        # NOTE: this would only work for a singular component
+        #       due to the way we're calculating X^2. One can,
+        #       in principle, calculate X^2 with a mask to
+        #       bypass this issue, but only in the case of the
+        #       components being clearly separated.
+        #       Otherwise the cut value needs to be set "by eye"
+        mask = self.prob_chisq < cut if self.prob_chisq is not None else mask
+
+        # that +1 modifier is there because of aplpy's
+        # convention on the (0,0) origin in FITS files
+        for y,x in np.stack(np.where(mask)).T+1:
+            ax.plot([x-.5,x-.5,x+.5,x+.5,x-.5], 
+                    [y-.5,y+.5,y+.5,y-.5,y-.5], 
+                    **pltkwargs)
 
     def get_likelihood(self, sigma = None):
         """
@@ -586,49 +636,64 @@ def main():
         sc = SubCube('foo.fits')
     except IOError:
         from astro_toolbox import make_test_cube
-        make_test_cube((100,10,10), outfile='foo.fits', 
+        make_test_cube((300,10,10), outfile='foo.fits', 
                 sigma=(10,5), writeSN=True)
         sc = SubCube('foo.fits')
 
+    # TODO: move this to astro_toolbox.py
+    #       as a general synthetic cube generator routine
+    # let's tinker with the cube a bit!
+    # this will introduce a radial velocity gradient:
+    def rotate_ppv(arr):
+        scale_roll = 15
+        for y,x in np.ndindex(arr.shape[1:]):
+            roll = np.sqrt((x-5)**2 + (y-5)**2) * scale_roll
+            arr[:,y,x] = np.roll(arr[:,y,x], int(roll))
+        return arr
+    sc.cube = rotate_ppv(sc.cube)
+
     sc.update_model('gaussian')
 
-    guesses = [0.5, 0.2, 0.8]
-    minpars = np.array(guesses)/20
-    maxpars = np.array(guesses)*10
-    finesse = 5
+    minpars = [0.1, -15, 0.1]
+    maxpars = [2, -10, 2]
+    finesse = 10
 
     print "Estimating SNR . . ."
     sc.get_snr_map()
 
     print "Making a guess grid based on parameter permutations . . ."
-    sc.make_guess_grid(minpars, maxpars, finesse)
+    sc.make_guess_grid(minpars, maxpars, finesse,
+                       limitedmin = [True, False, True],
+                       limitedmax = [True, False, True],
+                    )
     print "Generating spectral models for all %i guesses . . ." \
                         % sc.guess_grid.shape[0]
     sc.generate_model()
-    
     print "Calculating the best guess on the grid . . ."
     sc.best_guess()
-    sc.info()
 
     from astro_toolbox import get_ncores
-    # TODO: why does 'fixed' fitkwarg breat fiteach?
+    # TODO: why does 'fixed' fitkwarg break fiteach?
     sc.fiteach_args.pop('fixed',None)
-    sc.fiteach(fittype        = sc.fittype,
-               guesses        = sc.guess_grid[sc.best_model],
-               multicore      = get_ncores(),
-               verbose        = 0,
-               position_order = 1/sc.snr_map,
-               **sc.fiteach_args
-               )
+    sc.fiteach(fittype               = sc.fittype,
+               guesses               = sc.guess_grid[sc.best_model],
+               multicore             = get_ncores(),
+               position_order        = 1/sc.snr_map,
+               use_neighbor_as_guess = True,
+               errmap                = sc._rms_map,
+               **sc.fiteach_args)
+
+    # computing chi^2 statistics to judge the goodness of fit:
     sc.get_chi_squared(sigma=sc.header['RMSLVL'])
-    #sc.get_likelihood(sigma=sc._rms_map)
-    chisq, dof = sc.chi_squared_stats()
-    plt.rc('text', usetex=True)
-    sc.mapplot()
-    sc.mapplot.plane = chisq
-    sc.mapplot(estimator=None, cmap='viridis', vmin=0, vmax=1)
-    labtxt = r'$\chi^2\mathrm{~probability~(%i~d.o.f.)}$' % dof
-    sc.mapplot.FITSFigure.colorbar.set_axis_label_text(labtxt)
+    sc.chi_squared_stats()
+
+    # let's plot the velocity field:
+    sc.show_fit_param(1, cmap='coolwarm')
+    clb = sc.mapplot.FITSFigure.colorbar
+    clb.set_axis_label_text(sc.xarr.unit.to_string('latex_inline'))
+
+    # and overlay the pixels that didn't converge properly:
+    sc.mark_bad_fits()
 
 if __name__ == "__main__":
 	main()
