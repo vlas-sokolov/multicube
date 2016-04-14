@@ -1,9 +1,5 @@
-"""
-A small OOP-oriented wrapper for pyspeckit,
-for extended flexibility with input guesses,
-model selection, and multiple component fits.
-"""
 import numpy as np
+import matplotlib.pylab as plt
 import astropy.units as u
 import pyspeckit
 
@@ -13,6 +9,10 @@ import pyspeckit
 # TODO: redefine SpectralCube.py#L795-L823 to
 #       include the option of choosing between
 #       the guesses in the middle of fiteach run
+
+# TODO: holy cow, FIXME!
+#       because I've always tested things on 10x10
+#       cube I probably messed up my y's and x's
 
 class SubCube(pyspeckit.Cube):
     """
@@ -50,7 +50,7 @@ class SubCube(pyspeckit.Cube):
               "--> Data cube:\t{}\n".format(getinfo('cube'))        + \
               "--> Guess grid:\t{}\n".format(getinfo('guess_grid')) + \
               "--> Model grid:\t{}\n".format(getinfo('model_grid')) + \
-              "--> Result rms:\t{}\n".format(getinfo('residual_rms')) + \
+              "--> Result rms:\t{}\n".format(getinfo('_residual_rms')) + \
               "--> SNR map:\t{}\n".format(getinfo('snr_map'))
 
     def update_model(self, fit_type='gaussian'):
@@ -281,8 +281,15 @@ class SubCube(pyspeckit.Cube):
                "highest SNR position at (%i,%i)" \
                        % (which_best, self.guess_grid[which_best], 
                                best, x_max_snr, y_max_snr)
-        self.best_model = which_best
-        self.residual_rms = residual_rms
+
+        rms_min = residual_rms.min(axis=0)
+        best_map = np.empty(shape=self.cube.shape[1:], dtype=int)
+        for which,y,x in np.array(np.where(residual_rms==rms_min)).T: 
+            best_map[x,y] = which
+
+        self.best_model    = which_best
+        self._residual_rms = residual_rms
+        self.best_map      = best_map
 
     def get_slice_mask(self, mask2d):
         """

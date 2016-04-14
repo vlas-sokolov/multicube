@@ -8,16 +8,13 @@ import numpy as np
 import matplotlib.pylab as plt
 import pyspeckit
 from subcube import SubCube
+from astro_toolbox import make_test_cube
 
 # TODO: rewrite into a jupyter notebook example!
-    
-try:
-    sc = SubCube('foo.fits')
-except IOError:
-    from astro_toolbox import make_test_cube
-    make_test_cube((300,10,10), outfile='foo.fits', 
-            sigma=(10,5), writeSN=True)
-    sc = SubCube('foo.fits')
+
+# generating a dummy FITS file
+make_test_cube((300,10,10), outfile='foo.fits', sigma=(10,5))
+sc = SubCube('foo.fits')
 
 # TODO: move this to astro_toolbox.py
 #       as a general synthetic cube generator routine
@@ -33,8 +30,8 @@ sc.cube = rotate_ppv(sc.cube)
 
 sc.update_model('gaussian')
 
-minpars = [0.1, -15, 0.1]
-maxpars = [2, -10, 2]
+minpars = [0.1, sc.xarr.min().value, 0.1]
+maxpars = [2.0, sc.xarr.max().value, 2.0]
 finesse = 10
 
 print "Estimating SNR . . ."
@@ -42,8 +39,8 @@ sc.get_snr_map()
 
 print "Making a guess grid based on parameter permutations . . ."
 sc.make_guess_grid(minpars, maxpars, finesse,
-                   limitedmin = [True, False, True],
-                   limitedmax = [True, False, True],
+#                   limitedmin = [True, False, True],
+#                   limitedmax = [True, False, True],
                 )
 print "Generating spectral models for all %i guesses . . ." \
                     % sc.guess_grid.shape[0]
@@ -55,10 +52,8 @@ from astro_toolbox import get_ncores
 # TODO: why does 'fixed' fitkwarg break fiteach?
 sc.fiteach_args.pop('fixed',None)
 sc.fiteach(fittype               = sc.fittype,
-           guesses               = sc.guess_grid[sc.best_model],
+           guesses               = sc.guess_grid[sc.best_map].T,
            multicore             = get_ncores(),
-           position_order        = 1/sc.snr_map,
-           use_neighbor_as_guess = True,
            errmap                = sc._rms_map,
            **sc.fiteach_args)
 
