@@ -510,7 +510,8 @@ class SubCube(pyspeckit.Cube):
 
         return prob_chisq, dof
 
-    def mark_bad_fits(self, ax = None, mask = None, cut = 1e-20, **kwargs):
+    def mark_bad_fits(self, ax = None, mask = None, 
+                      cut = 1e-20, method = 'cross', **kwargs):
         """
         Given an active axis used by Cube.mapplot, overplot 
         pixels with bad fits with an overlay.
@@ -542,9 +543,31 @@ class SubCube(pyspeckit.Cube):
         # that +1 modifier is there because of aplpy's
         # convention on the (0,0) origin in FITS files
         for y,x in np.stack(np.where(mask)).T+1:
+            self._doodle_xy(ax, (y,x), method, **pltkwargs)
+
+    def _doodle_xy(self, ax, xy, method, **kwargs):
+        """
+        Draws lines on top of a pixel.
+
+        Parameters
+        ----------
+        ax : axis to doodle on
+
+        xy : a tuple of xy coordinate pair
+
+        method : what to draw. 'box' and 'cross' are supported
+        """
+        x, y = xy
+        if method is 'box':
             ax.plot([x-.5,x-.5,x+.5,x+.5,x-.5], 
                     [y-.5,y+.5,y+.5,y-.5,y-.5], 
-                    **pltkwargs)
+                    **kwargs)
+        elif method is 'cross':
+            ax.plot([x-.5,x+.5], [y-.5,y+.5], **kwargs)
+            ax.plot([x+.5,x-.5], [y-.5,y+.5], **kwargs)
+        else:
+            raise ValueError("unknown method %s passed to "
+                             "the doodling function" % method)
 
     def get_likelihood(self, sigma = None):
         """
