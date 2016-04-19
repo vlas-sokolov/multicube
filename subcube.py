@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pylab as plt
 import astropy.units as u
+from astropy import log
 import pyspeckit
 
 # TODO: make informative log/on-screen messages
@@ -46,12 +47,12 @@ class SubCube(pyspeckit.Cube):
             except AttributeError:
                 return 'N/A'
                 pass
-        print "Shapes of the arrays:\n" \
-              "--> Data cube:\t{}\n".format(getinfo('cube'))        + \
-              "--> Guess grid:\t{}\n".format(getinfo('guess_grid')) + \
-              "--> Model grid:\t{}\n".format(getinfo('model_grid')) + \
-              "--> Result rms:\t{}\n".format(getinfo('_residual_rms')) + \
-              "--> SNR map:\t{}\n".format(getinfo('snr_map'))
+        log.info("Shapes of the arrays:\n"
+                 "--> Data cube:\t{}\n".format(getinfo('cube'))+\
+                 "--> Guess grid:\t{}\n".format(getinfo('guess_grid'))+\
+                 "--> Model grid:\t{}\n".format(getinfo('model_grid'))+\
+                 "--> Result rms:\t{}\n".format(getinfo('_residual_rms'))+\
+                 "--> SNR map:\t{}\n".format(getinfo('snr_map')))
 
     def update_model(self, fit_type='gaussian'):
         """
@@ -277,10 +278,10 @@ class SubCube(pyspeckit.Cube):
         [x_max_snr],[y_max_snr] = np.where(self.snr_map==self.snr_map.max())
         best = residual_rms[:,x_max_snr,y_max_snr].min()
         which_best = np.where(residual_rms[:,x_max_snr,y_max_snr]==best)[0][0]
-        print "Best model: #%i %s giving rms=%.2f for" \
-               "highest SNR position at (%i,%i)" \
-                       % (which_best, self.guess_grid[which_best], 
-                               best, x_max_snr, y_max_snr)
+        log.info("Best model: selected %s with %.2f residuals "
+                 "at best SNR pixel (%i,%i)" \
+                 % (self.guess_grid[which_best].round(2), 
+                    best, x_max_snr, y_max_snr))
 
         rms_min = residual_rms.min(axis=0)
         best_map = np.empty(shape=self.cube.shape[1:], dtype=int)
@@ -420,8 +421,8 @@ class SubCube(pyspeckit.Cube):
         rms_map : numpy.array, also stored under SubCube.rms_map
         """
         if noise_mask is None:
-            # will calculate rms of all channels
-            # TODO: throw a warning here: this will overestimate the rms!
+            log.warn('no noise mask was given, will calculate the RMS '
+                     'over all channels, thus overestimating the noise!')
             noise_mask = np.ones(self.xarr.shape, dtype=bool)
         rms_map = self.cube[noise_mask,:,:].std(axis=0)
         self._rms_map = rms_map
@@ -442,8 +443,8 @@ class SubCube(pyspeckit.Cube):
         signal_map : numpy.array, also stored under SubCube.signal_map
         """
         if signal_mask is None:
-            # will calculate signal strength as a max of all channels
-            # TODO: throw a warning here: this might overestimate the signal!
+            log.warn('no signal mask was given, will calculate the signal '
+                     'over all channels: true signal might be lower.')
             signal_mask = np.array(self.xarr.shape, dtype=bool)
         signal_map = self.cube[signal_mask,:,:].max(axis=0)
         self._signal_map = signal_map
