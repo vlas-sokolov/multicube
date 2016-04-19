@@ -223,6 +223,13 @@ class SubCube(pyspeckit.Cube):
                  Ignore items on xy_list if the corresponding
                  spectra have too low signal-to-noise ratios.
 
+        Output
+        ------
+        best_snr_guess : the model for the least residual at peak SNR
+                         (saved as a SubCube attribute)
+
+        best_guesses : a cube of best models corresponding to xy-grid
+                       (saved as a SubCube attribute)
         """
         if model_grid is None:
             if self.model_grid is None:
@@ -285,9 +292,11 @@ class SubCube(pyspeckit.Cube):
         for which,x,y in np.array(np.where(residual_rms==rms_min)).T:
             best_map[x,y] = which
 
-        self.best_model    = which_best
-        self._residual_rms = residual_rms
-        self.best_map      = best_map
+        self._best_model    = which_best
+        self._residual_rms  = residual_rms
+        self._best_map      = best_map
+        self.best_snr_guess = self.guess_grid[which_best]
+        self.best_guesses   = np.rollaxis(self.guess_grid[best_map],-1)
 
     def get_slice_mask(self, mask2d):
         """

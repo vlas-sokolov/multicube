@@ -54,7 +54,7 @@ sc1, sc2 = sc, sc.copy()
 # fitting the whole cube with a single guess, selected
 # to be the best for the pixel with the highest S/N ratio
 sc1.fiteach(fittype   = sc1.fittype,
-            guesses   = sc1.guess_grid[sc1.best_model],
+            guesses   = sc1.best_snr_guess,
             multicore = get_ncores(),
             errmap    = sc1._rms_map,
             **sc1.fiteach_args)
@@ -74,7 +74,7 @@ sc1.mark_bad_fits() # not so good at the edges, right?
 
 # now let's pass fiteach the best guesses for every x,y pixel!
 sc2.fiteach(fittype   = sc2.fittype,
-            guesses   = np.rollaxis(sc2.guess_grid[sc2.best_map],-1),
+            guesses   = sc2.best_guesses,
             multicore = get_ncores(),
             errmap    = sc2._rms_map,
             **sc2.fiteach_args)
