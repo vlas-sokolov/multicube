@@ -76,7 +76,7 @@ sc1.mark_bad_fits() # not so good at the edges, right?
 
 # now let's pass fiteach the best guesses for every x,y pixel!
 sc2.fiteach(fittype   = sc2.fittype,
-            guesses   = sc2.guess_grid[sc2.best_map].T,
+            guesses   = np.rollaxis(sc2.guess_grid[sc2.best_map],-1),
             multicore = get_ncores(),
             errmap    = sc2._rms_map,
             **sc2.fiteach_args)

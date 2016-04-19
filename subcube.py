@@ -11,10 +11,6 @@ import pyspeckit
 #       include the option of choosing between
 #       the guesses in the middle of fiteach run
 
-# TODO: holy cow, FIXME!
-#       because I've always tested things on 10x10
-#       cube I probably messed up my y's and x's
-
 class SubCube(pyspeckit.Cube):
     """
     An extension of Cube, tinkered to be an instance of MultiCube, from which 
@@ -285,7 +281,7 @@ class SubCube(pyspeckit.Cube):
 
         rms_min = residual_rms.min(axis=0)
         best_map = np.empty(shape=self.cube.shape[1:], dtype=int)
-        for which,y,x in np.array(np.where(residual_rms==rms_min)).T: 
+        for which,x,y in np.array(np.where(residual_rms==rms_min)).T:
             best_map[x,y] = which
 
         self.best_model    = which_best
