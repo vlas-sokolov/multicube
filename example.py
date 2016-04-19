@@ -48,8 +48,6 @@ print "Generating spectral models for all %i guesses . . ." \
 sc.generate_model()
 print "Calculating the best guess on the grid . . ."
 sc.best_guess()
-# TODO: why does 'fixed' fitkwarg break fiteach?
-sc.fiteach_args.pop('fixed',None)
 
 sc1, sc2 = sc, sc.copy()
 
