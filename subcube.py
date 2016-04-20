@@ -4,8 +4,8 @@ import astropy.units as u
 from astropy import log
 import pyspeckit
 
-# TODO: make informative log/on-screen messages
-#       about what's being done to the subcubes
+# TODO: make informative log.info messages in
+#       the methods of the SubCube class
 
 # TODO: redefine SpectralCube.py#L795-L823 to
 #       include the option of choosing between
@@ -156,24 +156,12 @@ class SubCube(pyspeckit.Cube):
                         iterate over cubes of guesses.
                      If not set, SubCube.guess_grid is used.
 
-        WARNING: (3) and (4) aren't implemented yet.
-
         Returns
         -------
         model_grid : a grid of spectral models, following the 
                      shape of guess_grid. Also saved as an 
                      instance under SubCube.model_grid
         """
-        # NOTE: 2016.03.22: currently works for (a) and (c), see below
-
-        # TODO: test for all possible model grid sizes,
-        #       and write up proper error handling!
-        #       things you should be able receive:
-        #        a) a single par-iterable
-        #        b) an XY collection of pars
-        #        c) an N*par collection of different guesses
-        #        d) an N*XY*par mess: should not proceed without
-        #           vectorization! it will simply be too slow :/
         if guess_grid is None:
             try:
                 guess_grid = self.guess_grid
@@ -198,7 +186,7 @@ class SubCube(pyspeckit.Cube):
         self.model_grid = model_grid
         return model_grid
 
-    def best_guess(self, model_grid=None, xy_list=None, sn_cut=None):
+    def best_guess(self, model_grid=None, sn_cut=None):
         """
         For a grid of initial guesses, determine the optimal one based 
         on the preliminary residual of the specified spectral model.
@@ -213,12 +201,6 @@ class SubCube(pyspeckit.Cube):
                    compared to every model from the model_grid.
                    sn_cut (see below) is still applied.
 
-        xy_list : iterable
-                  A collection of positions on the data cube
-                  which to check for the lowest residuals.
-                  Ignored if use_cube was set to `True`
-                  Actually, I guess I should use a mask for this...
-
         sn_cut : float
                  Ignore items on xy_list if the corresponding
                  spectra have too low signal-to-noise ratios.
@@ -231,23 +213,18 @@ class SubCube(pyspeckit.Cube):
         best_guesses : a cube of best models corresponding to xy-grid
                        (saved as a SubCube attribute)
         """
+        guess_grid_internal = True if model_grid is None else False
         if model_grid is None:
             if self.model_grid is None:
                 raise TypeError('sooo the model_grid is empty, '
                                 'did you run generate_model()?')
             model_grid = self.model_grid
+
+        # TODO: allow best_guess to operate with a mask
+
         # TODO: scale this up later for MultiCube.judge() method
         #       to include the deviance information criterion, DIC
         #       (c.f Kunz et al. 2006 and Sebastian's IMPRS slides)
-
-        # TODO break-down:
-        #
-        # + First milestone  : make the blind iteration over the spectra,
-        #                      have some winner-takes-it-all selection in place
-        # + Second milestone : implement the snr mask
-        # - Third milestone  : xy_list functionality, pixel coordinates only
-        # - Fourth milestone : extend to all possible model_grid shapes
-        #
         if model_grid.shape!=self.cube.shape:
             # NOTE: we aren't sure how to propagate the models on the
             #       cube, which means that we simple have a 1d assembly
@@ -260,7 +237,7 @@ class SubCube(pyspeckit.Cube):
                 model_grid = np.repeat(model_grid, axlen, axis=axnum+2)
         else:
             model_grid = model_grid.reshape(1,*model_grid.shape)
-            # commence the invasion!
+
         residual_rms = np.empty(tuple([model_grid.shape[0]])+
                                           model_grid.shape[2:])
         for i,model_cube in enumerate(model_grid):
@@ -282,10 +259,6 @@ class SubCube(pyspeckit.Cube):
         [x_max_snr],[y_max_snr] = np.where(self.snr_map==self.snr_map.max())
         best = residual_rms[:,x_max_snr,y_max_snr].min()
         which_best = np.where(residual_rms[:,x_max_snr,y_max_snr]==best)[0][0]
-        log.info("Best model: selected %s with %.2f residuals "
-                 "at best SNR pixel (%i,%i)" \
-                 % (self.guess_grid[which_best].round(2), 
-                    best, x_max_snr, y_max_snr))
 
         rms_min = residual_rms.min(axis=0)
         best_map = np.empty(shape=self.cube.shape[1:], dtype=int)
@@ -295,8 +268,14 @@ class SubCube(pyspeckit.Cube):
         self._best_model    = which_best
         self._residual_rms  = residual_rms
         self._best_map      = best_map
-        self.best_snr_guess = self.guess_grid[which_best]
-        self.best_guesses   = np.rollaxis(self.guess_grid[best_map],-1)
+
+        if guess_grid_internal:
+            log.info("Best model: selected %s with %.2f residuals "
+                     "at best SNR pixel (%i,%i)" \
+                     % (self.guess_grid[which_best].round(2),
+                        best, x_max_snr, y_max_snr))
+            self.best_snr_guess = self.guess_grid[which_best]
+            self.best_guesses   = np.rollaxis(self.guess_grid[best_map],-1)
 
     def get_slice_mask(self, mask2d):
         """
