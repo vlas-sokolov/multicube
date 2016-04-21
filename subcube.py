@@ -168,20 +168,24 @@ class SubCube(pyspeckit.Cube):
             except AttributeError:
                 raise RuntimeError("Can't find the guess grid to use,")
 
-        # make it at least 2d, otherwise will iterate over empty tuple:
+        # safeguards preventing wrong output shapes
+        npars = self.specfit.fitter.npars
         guess_grid = np.atleast_2d(guess_grid)
         grid_shape = guess_grid.shape[:-1]
-        model_grid = np.empty(shape=grid_shape+tuple([self.xarr.size]))
+        if ((len(grid_shape)>1 and grid_shape[-2:]!=self.cube.shape[1:]) or
+            (len(grid_shape)>3) or (guess_grid.shape[-1]!=npars)):
+            raise ValueError("Invalid shape for the guess_grid, "
+                             "check the docsting for details.")
 
+        model_grid = np.empty(shape=grid_shape+tuple([self.xarr.size]))
         # NOTE: this for loop is the performance bottleneck!
         # would be nice if I could broadcast grid_grid to n_modelfunc...
         for idx in np.ndindex(grid_shape):
             model_grid[idx] = \
                 self.specfit.get_full_model(pars=guess_grid[idx])
 
-        # TODO: raise it when appropriate
-        #raise IndexError('Guess grid size can not be matched'
-        #                 ' to either cube or spectrum size. ')
+        import pdb
+        pdb.set_trace()
 
         self.model_grid = model_grid
         return model_grid
