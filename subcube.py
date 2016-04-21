@@ -173,7 +173,7 @@ class SubCube(pyspeckit.Cube):
         guess_grid = np.atleast_2d(guess_grid)
         grid_shape = guess_grid.shape[:-1]
         if ((len(grid_shape)>1 and grid_shape[-2:]!=self.cube.shape[1:]) or
-            (len(grid_shape)>3) or (guess_grid.shape[-1]!=npars)):
+            (len(grid_shape)>3) or (guess_grid.shape[-1]%npars)):
             raise ValueError("Invalid shape for the guess_grid, "
                              "check the docsting for details.")
 
