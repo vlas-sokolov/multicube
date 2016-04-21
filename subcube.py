@@ -184,9 +184,6 @@ class SubCube(pyspeckit.Cube):
             model_grid[idx] = \
                 self.specfit.get_full_model(pars=guess_grid[idx])
 
-        import pdb
-        pdb.set_trace()
-
         self.model_grid = model_grid
         return model_grid
 
