@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pylab as plt
 import astropy.units as u
 from astropy import log
+from astropy.utils.console import ProgressBar
 import pyspeckit
 
 # TODO: make informative log.info messages in
@@ -136,7 +137,6 @@ class SubCube(pyspeckit.Cube):
 
         return guess_grid
 
-    # TODO: make a progress bar
     def _approx_modelling_time(self, guess_grid=None, n=100, dn=5):
         """
         Extrapolates the time it would take to finish the
@@ -164,12 +164,17 @@ class SubCube(pyspeckit.Cube):
         grid_bkp = self.model_grid
         run_lengths, run_sizes = [], []
         import time
-        for i in range(0,n,dn):
-            start = time.clock()
-            self.generate_model(guess_grid = guess_grid[:i], how_long=False)
-            end = time.clock()
-            run_sizes.append(i)
-            run_lengths.append(end-start)
+        log.info("Generating data to estimate the time needed . . .")
+        with ProgressBar(n/dn) as bar:
+            for i in range(0,n,dn):
+                start = time.clock()
+                # how_long=False prevents recursive calls
+                self.generate_model(guess_grid = guess_grid[:i],
+                                    how_long=False)
+                end = time.clock()
+                run_sizes.append(i)
+                run_lengths.append(end-start)
+                bar.update()
         num_models = np.prod(guess_grid.shape[:-1])
         line_fit = np.poly1d(np.polyfit(run_sizes, run_lengths, 1))
         t_expected = line_fit(num_models)
@@ -188,7 +193,7 @@ class SubCube(pyspeckit.Cube):
                     ' '.join(readable_time))
         self.model_grid = grid_bkp
 
-    def generate_model(self, guess_grid=None, how_long=True):
+    def generate_model(self, guess_grid=None):
         """
         Generates a grid of spectral models matching the
         shape of the input guess_grid array. Can take the
@@ -232,19 +237,20 @@ class SubCube(pyspeckit.Cube):
             raise ValueError("Invalid shape for the guess_grid, "
                              "check the docsting for details.")
 
-        model_grid = np.empty(shape=grid_shape+tuple([self.xarr.size]))
+        model_grid = np.empty(shape=grid_shape+(self.xarr.size,))
         # NOTE: this for loop is the performance bottleneck!
         # would be nice if I could broadcast guess_grid to n_modelfunc...
-        if how_long:
-            self._approx_modelling_time()
-        for idx in np.ndindex(grid_shape):
-            model_grid[idx] = \
-                self.specfit.get_full_model(pars=guess_grid[idx])
+        log.info("Generating spectral models from the guess grid . . .")
+        with ProgressBar(model_grid.shape[0]) as bar:
+            for idx in np.ndindex(grid_shape):
+                model_grid[idx] = \
+                    self.specfit.get_full_model(pars=guess_grid[idx])
+                bar.update()
 
         self.model_grid = model_grid
         return model_grid
 
-    def best_guess(self, model_grid=None, sn_cut=None):
+    def best_guess(self, model_grid=None, sn_cut=None, bad_things_will_happen=False):
         """
         For a grid of initial guesses, determine the optimal one based 
         on the preliminary residual of the specified spectral model.
@@ -287,11 +293,43 @@ class SubCube(pyspeckit.Cube):
         if len(model_grid.shape)>2:
             raise NotImplementedError("Complex model girds aren't supported.")
 
-        #resid_rms = lambda xy: (xy[0]-xy[1]).std(axis=0)
-        # FIXME: due to broadcasting this can cause memory
-        # overflows for large number of models or big cubes
-        residual_rms = (self.cube[None,:,:,:]-
-                            model_grid[:,:,None,None]).std(axis=1)
+        try: # TODO: move this out into an astro_toolbox function
+            import psutil
+            mem = psutil.virtual_memory().available
+        except ImportError:
+            import os
+            try:
+                memgb = os.popen("free -m").readlines()[1].split()[3]
+            except IndexError: # would happen on Macs/Windows
+                memgb = 8
+                log.warn("Can't get the free RAM "
+                         "size, assuming %i GB" % i)
+            mem = int(memgb) * 2**30
+
+        # allow for 50% computational overhead
+        threshold = self.cube.nbytes*model_grid.shape[0]*2
+        if mem < threshold:
+            log.warn("The available free memory might not be enough for "
+                     "broadcasting model grid to the spectral cube. Will "
+                     "iterate over all the XY pairs instead. Coffee time!")
+
+            residual_rms = np.empty(shape=((model_grid.shape[0],)+
+                                            self.cube.shape[1:]   ))
+            log.info("Calculating residuals for generated models . . .")
+            with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
+                for (y,x) in np.ndindex(self.cube.shape[1:]):
+                    residual_rms[:,y,x] = (self.cube[None,:,y,x] -
+                                                model_grid).std(axis=1)
+                    bar.update()
+        else:
+            # NOTE: broadcasting below is a much faster way to compute
+            #       cube - model residuals. But for big model sizes this
+            #       will cause memory overflows.
+            #       The code above tried to catch this before it happens
+            #       and run things in a slower fashion.
+            log.info("Calculating residuals for generated models . . .")
+            residual_rms = (self.cube[None,:,:,:]-
+                                model_grid[:,:,None,None]).std(axis=1)
 
         if sn_cut:
             snr_mask = self.snr_map > sn_cut
