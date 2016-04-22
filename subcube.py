@@ -231,7 +231,7 @@ class SubCube(pyspeckit.Cube):
 
         model_grid = np.empty(shape=grid_shape+tuple([self.xarr.size]))
         # NOTE: this for loop is the performance bottleneck!
-        # would be nice if I could broadcast grid_grid to n_modelfunc...
+        # would be nice if I could broadcast guess_grid to n_modelfunc...
         for idx in np.ndindex(grid_shape):
             model_grid[idx] = \
                 self.specfit.get_full_model(pars=guess_grid[idx])
