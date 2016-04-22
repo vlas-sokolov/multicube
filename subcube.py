@@ -166,8 +166,8 @@ class SubCube(pyspeckit.Cube):
         import time
         for i in range(0,n,dn):
             start = time.clock()
-            self.generate_model(guess_grid = guess_grid[:i])
-            end   = time.clock()
+            self.generate_model(guess_grid = guess_grid[:i], how_long=False)
+            end = time.clock()
             run_sizes.append(i)
             run_lengths.append(end-start)
         num_models = np.prod(guess_grid.shape[:-1])
@@ -188,7 +188,7 @@ class SubCube(pyspeckit.Cube):
                     ' '.join(readable_time))
         self.model_grid = grid_bkp
 
-    def generate_model(self, guess_grid=None):
+    def generate_model(self, guess_grid=None, how_long=True):
         """
         Generates a grid of spectral models matching the
         shape of the input guess_grid array. Can take the
@@ -207,6 +207,9 @@ class SubCube(pyspeckit.Cube):
                      4) An (N, Y, X, M)-shaped array, to 
                         iterate over cubes of guesses.
                      If not set, SubCube.guess_grid is used.
+
+        how_long : bool, whether to compute the predicted running
+                   time generate_model will take to finish
 
         Returns
         -------
@@ -232,6 +235,8 @@ class SubCube(pyspeckit.Cube):
         model_grid = np.empty(shape=grid_shape+tuple([self.xarr.size]))
         # NOTE: this for loop is the performance bottleneck!
         # would be nice if I could broadcast guess_grid to n_modelfunc...
+        if how_long:
+            self._approx_modelling_time()
         for idx in np.ndindex(grid_shape):
             model_grid[idx] = \
                 self.specfit.get_full_model(pars=guess_grid[idx])
