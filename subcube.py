@@ -260,75 +260,67 @@ class SubCube(pyspeckit.Cube):
 
         Output
         ------
+        best_guesses : a cube of best models corresponding to xy-grid
+                       (saved as a SubCube attribute)
+
+        best_guess : a most commonly found best guess
+
         best_snr_guess : the model for the least residual at peak SNR
                          (saved as a SubCube attribute)
 
-        best_guesses : a cube of best models corresponding to xy-grid
-                       (saved as a SubCube attribute)
         """
-        guess_grid_internal = True if model_grid is None else False
         if model_grid is None:
             if self.model_grid is None:
                 raise TypeError('sooo the model_grid is empty, '
                                 'did you run generate_model()?')
             model_grid = self.model_grid
 
-        # TODO: allow best_guess to operate with a mask
+        # TODO: allow for all the possible outputs from generate_model()
+        if model_grid.shape[-1]!=self.cube.shape[0]:
+            raise ValueError("Invalid shape for the guess_grid, "
+                             "check the docsting for details.")
+        if len(model_grid.shape)>2:
+            raise NotImplementedError("Complex model girds aren't supported.")
 
-        # TODO: scale this up later for MultiCube.judge() method
-        #       to include the deviance information criterion, DIC
-        #       (c.f Kunz et al. 2006 and Sebastian's IMPRS slides)
-        if model_grid.shape!=self.cube.shape:
-            # NOTE: we aren't sure how to propagate the models on the
-            #       cube, which means that we simple have a 1d assembly
-            #       of models to be tested. This then should be unfolded
-            #       to the shape of the cube x nmodels
-            # inserting X and Y axes
-            model_grid = model_grid[:,:,None,None]
-            cube_shape = self.cube.shape[1:]
-            for axnum, axlen in enumerate(cube_shape):
-                model_grid = np.repeat(model_grid, axlen, axis=axnum+2)
-        else:
-            model_grid = model_grid.reshape(1,*model_grid.shape)
+        #resid_rms = lambda xy: (xy[0]-xy[1]).std(axis=0)
+        # FIXME: due to broadcasting this can cause memory
+        # overflows for large number of models or big cubes
+        residual_rms = (self.cube[None,:,:,:]-
+                            model_grid[:,:,None,None]).std(axis=1)
 
-        residual_rms = np.empty(tuple([model_grid.shape[0]])+
-                                          model_grid.shape[2:])
-        for i,model_cube in enumerate(model_grid):
-            residual_rms[i] = (self.cube - model_cube).std(axis=0)
+        if sn_cut:
+            snr_mask = self.snr_map > sn_cut
+            residual_rms[get_slice_mask(snr_mask)] = np.inf
 
-            # NOTE: np.array > None returns an all-True mask
-            snr_mask = self.get_snr_map() > sn_cut
-            try:
-                best = residual_rms[i][snr_mask].min()
-            except ValueError:
-                raise ValueError("Oh gee, something broke. "
-                                 "Was SNR cutoff too high?" )
-            # TODO: catch edge cases, e.g. no valid points found
-            if np.isnan(residual_rms[i]).all():
-                # FIXME: throw a warning for all-NaN case
-                raise ValueError("All NaN residual encountered.")
-            vmin, (xmin,ymin) = best, np.where(residual_rms[i]==best)
+        best_map   = np.argmin(residual_rms, axis=0)
+        rmsmin_map = residual_rms.min(axis=0)
+        self._best_map    = best_map
+        self._best_rmsmap = rmsmin_map
+        self.best_guesses = np.rollaxis(self.guess_grid[best_map],-1)
 
-        [x_max_snr],[y_max_snr] = np.where(self.snr_map==self.snr_map.max())
-        best = residual_rms[:,x_max_snr,y_max_snr].min()
-        which_best = np.where(residual_rms[:,x_max_snr,y_max_snr]==best)[0][0]
+        from scipy.stats import mode
+        model_mode = mode(best_map)
+        best_model_num = model_mode[0][0,0]
+        best_model_freq = model_mode[1][0,0]
+        best_model_frac = (float(best_model_freq) /
+                            np.prod(self.cube.shape[1:]))
+        if best_model_frac < .05:
+            log.warn("Selected model is best only for less than %5 "
+                     "of the cube, consider using the map of guesses.")
+        self._best_model = best_model_num
+        self.best_guess  = self.guess_grid[best_model_num]
+        log.info("Overall best model: selected #%i %s" % (best_model_num,
+                 self.guess_grid[best_model_num].round(2)))
 
-        rms_min = residual_rms.min(axis=0)
-        best_map = np.empty(shape=self.cube.shape[1:], dtype=int)
-        for which,x,y in np.array(np.where(residual_rms==rms_min)).T:
-            best_map[x,y] = which
-
-        self._best_model    = which_best
-        self._residual_rms  = residual_rms
-        self._best_map      = best_map
-
-        if guess_grid_internal:
-            log.info("Best model: selected %s with %.2f residuals "
-                     "at best SNR pixel (%i,%i)" \
-                     % (self.guess_grid[which_best].round(2),
-                        best, x_max_snr, y_max_snr))
-            self.best_snr_guess = self.guess_grid[which_best]
-            self.best_guesses   = np.rollaxis(self.guess_grid[best_map],-1)
+        try:
+            best_snr = np.argmax(self.snr_map)
+            best_snr = np.unravel_index(best_snr, self.snr_map.shape)
+            self.best_snr_guess = self.guess_grid[best_map[best_snr]]
+            log.info("Best model @ highest SNR: #%i %s" %
+                     (best_map[best_snr], self.best_snr_guess.round(2)))
+        except AttributeError:
+            log.warn("Can't find the SNR map, best guess at "
+                     "highest SNR pixel will not be stored.")
 
     def get_slice_mask(self, mask2d):
         """
