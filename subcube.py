@@ -37,20 +37,6 @@ class SubCube(pyspeckit.Cube):
         self.guess_grid = None
         self.model_grid = None
 
-    def info(self):
-        def getinfo(target):
-            try:
-                return getattr(getattr(self,target), 'shape')
-            except AttributeError:
-                return 'N/A'
-                pass
-        log.info("Shapes of the arrays:\n"
-                 "--> Data cube:\t{}\n".format(getinfo('cube'))+\
-                 "--> Guess grid:\t{}\n".format(getinfo('guess_grid'))+\
-                 "--> Model grid:\t{}\n".format(getinfo('model_grid'))+\
-                 "--> Result rms:\t{}\n".format(getinfo('_residual_rms'))+\
-                 "--> SNR map:\t{}\n".format(getinfo('snr_map')))
-
     def update_model(self, fit_type='gaussian'):
         """
         Tie a model to a SubCube. Didn't test it
@@ -136,62 +122,6 @@ class SubCube(pyspeckit.Cube):
         self.guess_grid = guess_grid
 
         return guess_grid
-
-    def _approx_modelling_time(self, guess_grid=None, n=100, dn=5):
-        """
-        Extrapolates the time it would take to finish the
-        self.generate_model(guess_grid) call.
-
-        Parameters
-        ----------
-        guess_grid : np.array; see generate_model docstring
-                     If left empty, grabs self.guess_grid
-
-        n : int, up to which size guess_grid is tested
-
-        dn : step between the time measurements
-
-        Returns
-        -------
-        t_expected : float64; linearly extrapolated execution length
-        """
-        if guess_grid is None:
-            try:
-                guess_grid = self.guess_grid
-            except AttributeError:
-                raise RuntimeError("Can't find the guess grid to use,")
-
-        grid_bkp = self.model_grid
-        run_lengths, run_sizes = [], []
-        import time
-        log.info("Generating data to estimate the time needed . . .")
-        with ProgressBar(n/dn) as bar:
-            for i in range(0,n,dn):
-                start = time.clock()
-                # how_long=False prevents recursive calls
-                self.generate_model(guess_grid = guess_grid[:i],
-                                    how_long=False)
-                end = time.clock()
-                run_sizes.append(i)
-                run_lengths.append(end-start)
-                bar.update()
-        num_models = np.prod(guess_grid.shape[:-1])
-        line_fit = np.poly1d(np.polyfit(run_sizes, run_lengths, 1))
-        t_expected = line_fit(num_models)
-
-        # from here: http://stackoverflow.com/questions/6574329/
-        #            how-can-i-produce-a-human-readable-difference-
-        #            when-subtracting-two-unix-timestam
-        from dateutil.relativedelta import relativedelta
-        attrs = ['years', 'months', 'days', 'hours', 'minutes', 'seconds']
-        human_readable = lambda delta: ['%d %s' % (getattr(delta, attr),
-                            getattr(delta, attr) > 1 and attr or attr[:-1])
-                            for attr in attrs if getattr(delta, attr)]
-        readable_time = human_readable(relativedelta(seconds=t_expected))
-
-        log.info("Estimated time to run generate_model: %s" %
-                    ' '.join(readable_time))
-        self.model_grid = grid_bkp
 
     def generate_model(self, guess_grid=None):
         """
