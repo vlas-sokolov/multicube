@@ -5,9 +5,6 @@ from astropy import log
 from astropy.utils.console import ProgressBar
 import pyspeckit
 
-# TODO: make informative log.info messages in
-#       the methods of the SubCube class
-
 # TODO: redefine SpectralCube.py#L795-L823 to
 #       include the option of choosing between
 #       the guesses in the middle of fiteach run
@@ -51,6 +48,7 @@ class SubCube(pyspeckit.Cube):
             raise ValueError('Unsupported fit type: %s\n'
                              'Choose one from %s' 
                              % (fit_type, allowed_fitters.keys()))
+        log.info("Selected %s model" % fit_type)
         self.specfit.fittype = fit_type
         self.fittype = fit_type
 
@@ -92,7 +90,7 @@ class SubCube(pyspeckit.Cube):
         minpars, maxpars = np.asarray([minpars, maxpars])
         truths, falses = np.ones(minpars.shape, dtype=bool), \
                          np.zeros(minpars.shape, dtype=bool)
-        
+
         fixed = falses if fixed is None else fixed
         limitedmin = truths if limitedmin is None else limitedmin
         limitedmax = truths if limitedmax is None else limitedmax
@@ -109,7 +107,10 @@ class SubCube(pyspeckit.Cube):
 
         # conformity for finesse: int or np.array goes in and np.array goes out
         finesse = np.atleast_1d(finesse) * np.ones(npars)
-            
+
+        log.info("Binning the %i-dimensional parameter space into a %s-shaped grid" %
+                 (npars, str(tuple(finesse.astype(int)))))
+
         par_space = []
         for i_len, i_min, i_max in zip(finesse, minpars, maxpars):
             par_space.append(np.linspace(i_min, i_max, i_len))
