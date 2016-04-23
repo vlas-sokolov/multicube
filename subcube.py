@@ -250,24 +250,25 @@ class SubCube(pyspeckit.Cube):
         self.model_grid = model_grid
         return model_grid
 
-    def best_guess(self, model_grid=None, sn_cut=None, bad_things_will_happen=False):
+    def best_guess(self, model_grid=None, sn_cut=None, memory_limit=None):
         """
         For a grid of initial guesses, determine the optimal one based 
         on the preliminary residual of the specified spectral model.
 
         Parameters
         ----------
-        model_grid : numpy.array
-                     A model grid to choose from.
+        model_grid : numpy.array; A model grid to choose from.
 
-        use_cube : boolean
-                   If true, every xy-slice of a cube will be
-                   compared to every model from the model_grid.
+        use_cube : boolean; If true, every xy-slice of a cube will
+                   be compared to every model from the model_grid.
                    sn_cut (see below) is still applied.
 
-        sn_cut : float
-                 Ignore items on xy_list if the corresponding
-                 spectra have too low signal-to-noise ratios.
+        sn_cut : float; do not consider model selection for pixels
+                 below this signal-to-noise ratio cutoff.
+
+        memory_limit : float; How many gigabytes of RAM could be used for
+                       broadcasting. If estimated usage goes over this
+                       number, best_guess switches to a slower method.
 
         Output
         ------
@@ -303,7 +304,8 @@ class SubCube(pyspeckit.Cube):
             except IndexError: # would happen on Macs/Windows
                 memgb = 8
                 log.warn("Can't get the free RAM "
-                         "size, assuming %i GB" % i)
+                         "size, assuming %i GB" % memgb)
+            memgb = memory_limit or memgb
             mem = int(memgb) * 2**30
 
         # allow for 50% computational overhead
@@ -333,7 +335,7 @@ class SubCube(pyspeckit.Cube):
 
         if sn_cut:
             snr_mask = self.snr_map > sn_cut
-            residual_rms[get_slice_mask(snr_mask)] = np.inf
+            residual_rms[self.get_slice_mask(snr_mask)] = np.inf
 
         best_map   = np.argmin(residual_rms, axis=0)
         rmsmin_map = residual_rms.min(axis=0)
