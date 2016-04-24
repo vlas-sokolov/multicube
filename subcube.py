@@ -553,7 +553,7 @@ class SubCube(pyspeckit.Cube):
         # that +1 modifier is there because of aplpy's
         # convention on the (0,0) origin in FITS files
         for y,x in np.stack(np.where(mask)).T+1:
-            self._doodle_xy(ax, (y,x), method, **pltkwargs)
+            self._doodle_xy(ax, (x,y), method, **pltkwargs)
 
     def _doodle_xy(self, ax, xy, method, **kwargs):
         """
