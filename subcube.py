@@ -94,12 +94,15 @@ class SubCube(pyspeckit.Cube):
         fixed = falses if fixed is None else fixed
         limitedmin = truths if limitedmin is None else limitedmin
         limitedmax = truths if limitedmax is None else limitedmax
-        # TODO: why does 'fixed' break the gaussian fitter?
-        self.fiteach_args = {#'fixed'     : fixed,
+        self.fiteach_args = {'fixed'     : fixed,
                              'limitedmin': limitedmin,
                              'limitedmax': limitedmax,
                              'minpars'   : minpars,
                              'maxpars'   : maxpars    }
+
+        # TODO: why does 'fixed' break the gaussian fitter?
+        if self.fittype is 'gaussian':
+            self.fiteach_args.pop('fixed')
  
         # TODO: make sure you return the same shape!
         input_shape = minpars.shape
