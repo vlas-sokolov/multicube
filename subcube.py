@@ -505,6 +505,10 @@ class SubCube(pyspeckit.Cube):
         dof = self.xarr.size
         prob_chisq = chisqprob(self.chi_squared, dof)
 
+        # NOTE: for some reason get_modelcube returns zeros for some
+        #       pixels even if corresponding Cube.parcube[:,y,x] is NaN
+        prob_chisq[np.isnan(self.parcube.min(axis=0))] = np.nan
+
         if plot_chisq:
             if not plt.rcParams['text.usetex']:
                 plt.rc('text', usetex=True)
