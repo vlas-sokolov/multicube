@@ -3,55 +3,64 @@ Exploring ammonia subcubes
 """
 import numpy as np
 import matplotlib.pylab as plt
+from subcube import SubCube, SubCubeStack
+from astro_toolbox import make_test_cube, get_ncores, tinker_ring_parspace
 import pyspeckit
-from subcube import SubCube
-from astro_toolbox import make_test_cube
-from astro_toolbox import get_ncores
+from pyspeckit.spectrum.models.ammonia_constants import (freq_dict,
+                                                         voff_lines_dict)
+from astropy.io import fits
 import astropy.units as u
-from astropy.utils.console import ProgressBar
 
+xy_shape = (30,30)
 # generating a dummy (gaussian) FITS file
-make_test_cube((600,10,10), outfile='foo.fits', sigma=(10,5))
-sc = SubCube('foo.fits')
-sc.update_model('ammonia')
-sc.xarr.refX = 23.6944955*u.GHz
+make_test_cube((600,)+xy_shape, outfile='foo.fits', sigma=(10,5), writeSN=True)
 
-# replacing the gaussian spectra with ammonia ones
-spec_pars = [10,3.8,15,1.3,-25,0.5]
-base_spec = sc.specfit.get_full_model(pars = spec_pars)
-sc.cube[:,:,:] = base_spec[:,None,None] * sc.cube.max(axis=0)
-# adding noise to the nh3 cube
-sc.cube += (np.random.random(sc.cube.shape)-.5)*np.median(sc.cube.std(axis=0))
+def gauss_to_ammoniaJK(xy_pars, lfreq, fname='foo'):
+    """
+    Take a cube with a synthetic Gaussian "clump"
+    and replace the spectra with an ammonia one.
+    """
+    spc = SubCube(fname+'.fits')
+    spc.update_model('ammonia')
+    spc.xarr.refX = lfreq
+    # replacing the gaussian spectra with ammonia ones
+    for (y,x) in np.ndindex(xy_pars.shape[1:]):
+        spc.cube[:,y,x] = spc.specfit.get_full_model(pars = xy_pars[:,y,x])
+    # adding noise to the nh3 cube (we lost it in the previous step)
+    spc.cube += fits.getdata(fname+'-noise.fits')
+    return spc
+
+truepars = [12,4,15,0.3,-25,0.5]
+xy_pars = tinker_ring_parspace(truepars, xy_shape, [0,2], [3,1])
+cubelst = [gauss_to_ammoniaJK(xy_pars, freq_dict[line]*u.Hz)
+                for line in ['oneone','twotwo']]
+
+# creating a SubCubeStack instance from a list of SubCubes
+cubes = SubCubeStack(cubelst)
+cubes.update_model('ammonia')
+cubes.xarr.refX=freq_dict['oneone']*u.Hz
+cubes.xarr.velocity_convention='radio'
+#cubes.xarr.convert_to_unit('km/s')
 
 # setting up the grid of guesses and finding the one that matches best
-# TODO: add synthetic (2,2) and (3,3) spectra
-#       and let Tk and Ntot to be free
-minpars = [5 , 3, 15.0, 0.1, -40, 0.5]
-maxpars = [25, 7, 15.0,  2., -10, 0.5]
-fixed   = [True, False, True, False, False, True]
-finesse = [ 1, 10,   1,  10,  10,   1]
-sc.make_guess_grid(minpars, maxpars, finesse, fixed=fixed)
-sc.generate_model()
-sc.best_guess()
+minpars = [5 , 3, 10.0, 0.1, -30, 0.5]
+maxpars = [25, 7, 20.0, 1.0, -20, 0.5]
+fixed   = [False, False, False, False, False, True]
+finesse = [ 5,  3,   5,   4,   4,   1]
+cubes.make_guess_grid(minpars, maxpars, finesse, fixed=fixed)
+cubes.generate_model()
+cubes.best_guess()
 
+rmsmap = cubes.slice(-37,-27, unit='km/s').cube.std(axis=0)
 # fitting the cube with best guesses for each pixel
-rmsmap = np.ones(shape=sc.cube.shape[1:]) * sc.header['RMSLVL']
-sc.fiteach(fittype   = sc.fittype,
-           guesses   = sc.best_guesses,
-           multicore = get_ncores(),
-           errmap    = rmsmap,
-           **sc.fiteach_args)
+cubes.fiteach(fittype   = cubes.fittype,
+              guesses   = cubes.best_guesses,
+              multicore = get_ncores(),
+              errmap    = rmsmap,
+              **cubes.fiteach_args)
 
-# plotting the fitted line width
-sc.show_fit_param(3, cmap='viridis')
-clb = sc.mapplot.FITSFigure.colorbar
-clb.set_axis_label_text(sc.xarr.unit.to_string('latex_inline'))
-
-# how likely are the residuals to come from a chi^2 distribution?
-sc.get_chi_squared(sigma=sc.header['RMSLVL'])
-sc.chi_squared_stats()
-# if they aren't, mark them on the plot
-sc.mark_bad_fits()
+# plot ammonia gas temperature
+cubes.show_fit_param(0, cmap='viridis')
 
 plt.ion()
 plt.show()
