@@ -641,3 +641,12 @@ class SubCube(pyspeckit.Cube):
     #    self.likelihood = np.log(likelihood)
 
     #    return np.log(likelihood)
+
+class SubCubeStack(SubCube, pyspeckit.CubeStack):
+    """
+    SubCube analogy for CubeStack objects.
+    """
+    def __init__(self,*args):
+        super(SubCubeStack, self).__init__(*args)
+        log.warn("Doing something horrible with multiple "
+                 "inheritance. Needs to be tested more.")
