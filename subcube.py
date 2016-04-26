@@ -37,15 +37,13 @@ class SubCube(pyspeckit.Cube):
 
     def update_model(self, fit_type='gaussian'):
         """
-        Tie a model to a SubCube. Didn't test it
-        on anything but gaussian fitter so far.
-        Yeap, I don't understand how models work.
+        Tie a model to a SubCube. Should work for all the standard
+        fitters; others can be added with Cube.add_fitter method.
         """
         try:
             allowed_fitters = self.specfit.Registry.multifitters
             self.specfit.fitter = allowed_fitters[fit_type]
         except KeyError:
-            # TODO: get other models through add_fitter Registry method!
             raise ValueError('Unsupported fit type: %s\n'
                              'Choose one from %s' 
                              % (fit_type, allowed_fitters.keys()))
