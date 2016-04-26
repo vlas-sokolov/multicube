@@ -84,3 +84,25 @@ def get_ncores():
         ncores = 1
 
     return ncores
+
+def tinker_ring_parspace(parseed, xy_shape, parindices=[], paramps=[]):
+    """
+    An oscilating radial structure is intruduced to selected parameters.
+    """
+    xy_pars = np.empty((len(parseed),) + xy_shape)
+    xy_pars[:] = np.array(parseed)[:,None,None]
+
+    yarr, xarr = np.indices(xy_shape)
+    cent = (np.array(xy_shape)-1)/2.
+    arm = (min(xy_shape)-1)/2.
+    dist_norm = np.sqrt(((np.array([xarr,yarr]) - 
+                          cent[:,None,None])**2).sum(axis=0)) / arm
+
+    # a pretty distort function
+    c = 1.5*np.pi # normalization constant for radial distance
+    f = lambda x: (np.sin(x*c)**2 / (x*c)**2 + np.cos(x*c)**2)
+
+    for par_idx, par_amp in zip(parindices, paramps):
+        xy_pars[par_idx] += (f(dist_norm)-1) * par_amp
+    #import pdb; pdb.set_trace()
+    return xy_pars
