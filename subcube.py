@@ -4,6 +4,7 @@ import astropy.units as u
 from astropy import log
 from astropy.utils.console import ProgressBar
 import pyspeckit
+import os
 
 # TODO: redefine SpectralCube.py#L795-L823 to
 #       include the option of choosing between
@@ -127,7 +128,7 @@ class SubCube(pyspeckit.Cube):
 
         return guess_grid
 
-    def generate_model(self, guess_grid=None):
+    def generate_model(self, guess_grid=None, to_file=None, redo=True):
         """
         Generates a grid of spectral models matching the
         shape of the input guess_grid array. Can take the
@@ -147,15 +148,18 @@ class SubCube(pyspeckit.Cube):
                         iterate over cubes of guesses.
                      If not set, SubCube.guess_grid is used.
 
-        how_long : bool, whether to compute the predicted running
-                   time generate_model will take to finish
+        to_file : string; if not None then the models generated will
+                  be saved to an .npy file instead of class attribute
 
-        Returns
-        -------
-        model_grid : a grid of spectral models, following the 
-                     shape of guess_grid. Also saved as an 
-                     instance under SubCube.model_grid
+        redo : boolean; if False and to_file filename is in place, the
+               model gird will not be generated anew
         """
+
+        if not redo and os.path.isfile(to_file):
+            log.info("A file with generated models is "
+                     "already in place. Skipping.")
+            return
+
         if guess_grid is None:
             try:
                 guess_grid = self.guess_grid
@@ -181,10 +185,13 @@ class SubCube(pyspeckit.Cube):
                     self.specfit.get_full_model(pars=guess_grid[idx])
                 bar.update()
 
-        self.model_grid = model_grid
-        return model_grid
+        if to_file is not None:
+            np.save(to_file, model_grid)
+        else:
+            self.model_grid = model_grid
 
-    def best_guess(self, model_grid=None, sn_cut=None, memory_limit=None):
+    def best_guess(self, model_grid=None, sn_cut=None,
+                   memory_limit=None, from_file=None, **kwargs):
         """
         For a grid of initial guesses, determine the optimal one based 
         on the preliminary residual of the specified spectral model.
@@ -204,6 +211,10 @@ class SubCube(pyspeckit.Cube):
                        broadcasting. If estimated usage goes over this
                        number, best_guess switches to a slower method.
 
+        from_file : string; if not None then the models grid will be
+                    read from a file using np.load, which additional
+                    arguments, like mmap_mode, passed along to it
+
         Output
         ------
         best_guesses : a cube of best models corresponding to xy-grid
@@ -216,10 +227,13 @@ class SubCube(pyspeckit.Cube):
 
         """
         if model_grid is None:
-            if self.model_grid is None:
+            if from_file is not None:
+                model_grid = np.load(from_file, **kwargs)
+            elif self.model_grid is None:
                 raise TypeError('sooo the model_grid is empty, '
                                 'did you run generate_model()?')
-            model_grid = self.model_grid
+            else:
+                model_grid = self.model_grid
 
         # TODO: allow for all the possible outputs from generate_model()
         if model_grid.shape[-1]!=self.cube.shape[0]:
@@ -227,6 +241,8 @@ class SubCube(pyspeckit.Cube):
                              "check the docsting for details.")
         if len(model_grid.shape)>2:
             raise NotImplementedError("Complex model girds aren't supported.")
+
+        log.info("Calculating residuals for generated models . . .")
 
         try: # TODO: move this out into an astro_toolbox function
             import psutil
@@ -249,21 +265,48 @@ class SubCube(pyspeckit.Cube):
                      "broadcasting model grid to the spectral cube. Will "
                      "iterate over all the XY pairs instead. Coffee time!")
 
-            residual_rms = np.empty(shape=((model_grid.shape[0],)+
-                                            self.cube.shape[1:]   ))
-            log.info("Calculating residuals for generated models . . .")
-            with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
-                for (y,x) in np.ndindex(self.cube.shape[1:]):
-                    residual_rms[:,y,x] = (self.cube[None,:,y,x] -
-                                                model_grid).std(axis=1)
-                    bar.update()
+            try:
+                if type(model_grid) is not np.ndarray: # assume memmap type
+                    raise MemoryError("This will take ages, skipping to "
+                                      "the no-broadcasting scenario.")
+                residual_rms = np.empty(shape=((model_grid.shape[0],)+
+                                                self.cube.shape[1:]   ))
+                with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
+                    for (y,x) in np.ndindex(self.cube.shape[1:]):
+                        residual_rms[:,y,x] = (self.cube[None,:,y,x] -
+                                                    model_grid).std(axis=1)
+                        bar.update()
+            except MemoryError: # catching memory errors could be really bad!
+                log.warn("Not enough memory to broadcast model grid to the "
+                         "XY grid. This is bad for a number of reasons, the "
+                         "formost of which: the running time just went "
+                         "through the roof. Leave it overnight maybe?")
+                best_map = np.empty(shape=(self.cube.shape[1:]))
+                rmsmin_map = np.empty(shape=(self.cube.shape[1:]))
+                if sn_cut:
+                    snr_mask = self.snr_map > sn_cut
+                # TODO: this takes ages! refactor this through hdf5
+                # "chunks" of acceptable size, and then broadcast them!
+                with ProgressBar(np.prod((model_grid.shape[0],)+
+                                          self.cube.shape[1:]  )) as bar:
+                    for (y,x) in np.ndindex(self.cube.shape[1:]):
+                        if sn_cut:
+                            if not snr_mask[y,x]:
+                                best_map[y,x],rmsmin_map[y,x] = np.nan,np.nan
+                                continue
+                        resid_rms_xy = np.empty(shape=model_grid.shape[0])
+                        for model_id in np.ndindex(model_grid.shape[0]):
+                            resid_rms_xy[model_id] = (self.cube[:,y,x] -
+                                                  model_grid[model_id]).std()
+                            bar.update()
+                        best_map[y,x] = np.argmin(resid_rms_xy)
+                        rmsmin_map[y,x] = np.nanmin(resid_rms_xy)
         else:
             # NOTE: broadcasting below is a much faster way to compute
             #       cube - model residuals. But for big model sizes this
             #       will cause memory overflows.
             #       The code above tried to catch this before it happens
             #       and run things in a slower fashion.
-            log.info("Calculating residuals for generated models . . .")
             residual_rms = (self.cube[None,:,:,:]-
                                 model_grid[:,:,None,None]).std(axis=1)
 
