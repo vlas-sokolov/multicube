@@ -6,10 +6,6 @@ from astropy.utils.console import ProgressBar
 import pyspeckit
 import os
 
-# TODO: redefine SpectralCube.py#L795-L823 to
-#       include the option of choosing between
-#       the guesses in the middle of fiteach run
-
 class SubCube(pyspeckit.Cube):
     """
     An extension of Cube, tinkered to be an instance of MultiCube, from which 
@@ -248,7 +244,7 @@ class SubCube(pyspeckit.Cube):
         except ImportError:
             import os
             try:
-                memgb = os.popen("free -m").readlines()[1].split()[3]
+                memgb = os.popen("free -g").readlines()[1].split()[3]
             except IndexError: # would happen on Macs/Windows
                 memgb = 8
                 log.warn("Can't get the free RAM "
