@@ -248,7 +248,6 @@ class SubCube(pyspeckit.Cube):
         except ImportError:
             import os
             try:
-                # FIXME this would be -g not -m!!!
                 memgb = os.popen("free -g").readlines()[1].split()[3]
             except IndexError: # would happen on Macs/Windows
                 memgb = 8
