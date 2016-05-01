@@ -674,12 +674,11 @@ class SubCube(pyspeckit.Cube):
     # taken directly from pyspeckit.cubes.fiteach()!
     # reduced the function a bit, will tiner 
     # dynamically selected guesses soon.
-    def fiteach_mod(self, errmap=None, guesses=(), verbose=True,
-                    verbose_level=1, quiet=True, signal_cut=3,
-                    usemomentcube=None, blank_value=0,
-                    use_neighbor_as_guess=False, start_from_point=(0,0),
-                    multicore=1, position_order=None, maskmap=None, 
-                    **fitkwargs):
+
+    def fiteach(self, errmap=None, guesses=(), verbose=True, verbose_level=1,
+                quiet=True, signal_cut=3, usemomentcube=None, blank_value=0,
+                use_neighbor_as_guess=False, start_from_point=(0,0),
+                multicore=1, position_order=None, maskmap=None, **fitkwargs):
         """
         Fit a spectrum to each valid pixel in the cube
 
@@ -953,14 +952,16 @@ class SubCube(pyspeckit.Cube):
             for ii,(x,y) in enumerate(valid_pixels):
                 fit_a_pixel((ii,x,y))
 
-
+        sp = self.get_spectrum(*valid_pixels[0])
+        sp.specfit(guesses = self.parcube[:,
+                    valid_pixels[0][1],valid_pixels[0][1]])
         # March 27, 2014: This is EXTREMELY confusing.  This isn't in a loop...
         # make sure the fitter / fittype are set for the cube
         # this has to be done within the loop because skipped-over spectra
         # don't ever get their fittypes set
-        #self.specfit.fitter = sp.specfit.fitter
-        #self.specfit.fittype = sp.specfit.fittype
-        #self.specfit.parinfo = sp.specfit.parinfo
+        self.specfit.fitter = sp.specfit.fitter
+        self.specfit.fittype = sp.specfit.fittype
+        self.specfit.parinfo = sp.specfit.parinfo
 
         if verbose:
             log.info("Finished final fit %i.  "
