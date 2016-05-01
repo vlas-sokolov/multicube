@@ -677,8 +677,9 @@ class SubCube(pyspeckit.Cube):
 
     def fiteach(self, errmap=None, guesses=(), verbose=True, verbose_level=1,
                 quiet=True, signal_cut=3, usemomentcube=None, blank_value=0,
-                use_neighbor_as_guess=False, start_from_point=(0,0),
-                multicore=1, position_order=None, maskmap=None, **fitkwargs):
+                use_neighbor_as_guess=False, use_best_as_guess=False,
+                start_from_point=(0,0), multicore=1, position_order=None,
+                maskmap=None, **fitkwargs):
         """
         Fit a spectrum to each valid pixel in the cube
 
@@ -700,6 +701,10 @@ class SubCube(pyspeckit.Cube):
         use_neighbor_as_guess: bool
             Set this keyword to use the average best-fit parameters from
             neighboring positions with successful fits as the guess
+        use_best_as_guess: bool
+            If true, the initial guess for the pixel is selected as the one
+            giving the least residual among the fits from the neighboring
+            pixels and the guess for the pixel
         start_from_point: tuple(int,int)
             Either start from the center or from a point defined by a tuple.
             Work outward from that starting point.
@@ -750,7 +755,7 @@ class SubCube(pyspeckit.Cube):
             OK &= (~bad)
 
         if start_from_point == 'center':
-            start_from_point = (xx.max()/2., yy.max/2.)
+            start_from_point = (xx.max()/2., yy.max()/2.)
         if hasattr(position_order,'shape') and position_order.shape == self.cube.shape[1:]:
             sort_distance = np.argsort(position_order.flat)
         else:
@@ -842,7 +847,21 @@ class SubCube(pyspeckit.Cube):
             xpatch, ypatch = get_neighbors(x,y,self.has_fit.shape)
             local_fits = self.has_fit[ypatch+y,xpatch+x]
 
-            if use_neighbor_as_guess and np.any(local_fits):
+            if use_best_as_guess and np.any(local_fits):
+                gg = guesses[:,y,x] if len(guesses.shape)>1 else guesses
+                near_guesses = self.parcube[:, (ypatch+y)[local_fits],
+                                               (xpatch+x)[local_fits] ].T
+                ggrid = np.vstack([gg, near_guesses])
+                resid = [(sp.data - sp.specfit.get_full_model(pars=iguess)).std()
+                            for iguess in ggrid]
+                gg = ggrid[np.argmin(resid)]
+                if np.argmin(resid):
+                    log.info("Selecting best guess at (%i,%i) from (%i,%i): %s" %
+                             (x,y,xpatch[np.argmin(resid)-1]+x,
+                                  ypatch[np.argmin(resid)-1]+y,str(gg)))
+                else:
+                    log.info("Selecting best guess from input guess.")
+            elif use_neighbor_as_guess and np.any(local_fits):
                 # Array is N_guess X Nvalid_nbrs so averaging over
                 # Axis=1 is the axis of all valid neighbors
                 gg = np.mean(self.parcube[:, (ypatch+y)[local_fits],
