@@ -942,7 +942,8 @@ class SubCube(pyspeckit.Cube):
 
         sp = self.get_spectrum(*valid_pixels[0])
         sp.specfit(guesses = self.parcube[:,
-                    valid_pixels[0][1],valid_pixels[0][1]])
+                    valid_pixels[0][1],valid_pixels[0][0]],
+                    fittype = self.specfit.fittype)
         # March 27, 2014: This is EXTREMELY confusing.  This isn't in a loop...
         # make sure the fitter / fittype are set for the cube
         # this has to be done within the loop because skipped-over spectra
