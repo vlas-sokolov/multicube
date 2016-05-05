@@ -104,5 +104,36 @@ def tinker_ring_parspace(parseed, xy_shape, parindices=[], paramps=[]):
 
     for par_idx, par_amp in zip(parindices, paramps):
         xy_pars[par_idx] += (f(dist_norm)-1) * par_amp
-    #import pdb; pdb.set_trace()
     return xy_pars
+
+def write_skycoord_table(data, cube_ref, **kwargs):
+    """
+    Writes out a text file with flattened coordinates of the cube
+    stacked with input array data. Additional arguments are passed
+    to astropy's text writing function.
+
+    TODO: add a useful `names` keyword?
+
+    See astropy.io.ascii.write docstring for more info.
+
+    Parameters
+    ----------
+    data : array-like structure of the same xy-grid as cube_ref.
+
+    cube_ref : a cube file to get the coordinate grid from.
+
+    """
+    from astropy.table import Table
+    from astropy.io import ascii
+    from spectral_cube import SpectralCube
+
+    cube = SpectralCube.read(cube_ref)
+
+    flat_coords = [cube.spatial_coordinate_map[i].flatten() for i in [1,0]]
+    # TODO: finish this up for multiple components
+    #n_repeat = np.prod(np.array(data).shape)%np.prod(cube.shape[1:])+1
+
+    table = Table(np.vstack(flat_coords +
+        [np.array(xy_slice).flatten() for xy_slice in data]).T)
+
+    ascii.write(table, **kwargs)
