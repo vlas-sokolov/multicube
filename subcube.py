@@ -640,10 +640,11 @@ class SubCube(pyspeckit.Cube):
 
     #    return np.log(likelihood)
 
-    # taken directly from pyspeckit.cubes.fiteach()!
-    # reduced the function a bit, will tiner 
-    # dynamically selected guesses soon.
-
+    # Taken directly from pyspeckit.cubes.fiteach()!
+    # TODO: this is suitable for my personal needs only. Do I
+    #       really want this in the master branch? Probably not.
+    # New feature:
+    # * use_best_as_guess argument
     def fiteach(self, errmap=None, guesses=(), verbose=True, verbose_level=1,
                 quiet=True, signal_cut=3, usemomentcube=None, blank_value=0,
                 use_neighbor_as_guess=False, use_best_as_guess=False,
@@ -956,7 +957,6 @@ class SubCube(pyspeckit.Cube):
             log.info("Finished final fit %i.  "
                      "Elapsed time was %0.1f seconds" % (len(valid_pixels), time.time()-t0))
 
-
 class SubCubeStack(SubCube, pyspeckit.CubeStack):
     """
     SubCube analogy for CubeStack objects.
@@ -982,5 +982,3 @@ def get_neighbors(x, y, shape):
     xpatch, ypatch = zip(*xpyp)
 
     return np.array(xpatch, dtype='int'), np.array(ypatch, dtype='int')
-
-
