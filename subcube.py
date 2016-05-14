@@ -47,8 +47,8 @@ class SubCube(pyspeckit.Cube):
         self.specfit.fittype = fit_type
         self.fittype = fit_type
 
-    def make_guess_grid(self, minpars, maxpars, finesse, 
-            fixed=None, limitedmin=None, limitedmax=None):
+    def make_guess_grid(self, minpars, maxpars, finesse, fixed=None,
+                        limitedmin=None, limitedmax=None):
         """
         Given parameter ranges and a finesse parameter, generate a grid of 
         guesses in a parameter space to be iterated upon in self.best_guess
@@ -99,14 +99,50 @@ class SubCube(pyspeckit.Cube):
         if self.fittype is 'gaussian':
             self.fiteach_args.pop('fixed')
  
-        # TODO: make sure you return the same shape!
-        input_shape = minpars.shape
+        guess_grid = self._grid_parspace(minpars, maxpars, finesse)
+
+        self.guess_grid = guess_grid
+
+        return guess_grid
+
+    def expand_guess_grid(self, minpars, maxpars, finesse):
+        """
+        Useful for "chunky" discontinuities in parameter space.
+
+        Works as SubCube.make_guess_grid, but instead of creating guess_grid
+        from scratch, the new guess grid is appended to an existing one.
+        Parameter limits information is extended to accomodate the new grid.
+
+        Returns
+        -------
+        guess_grid : an updated grid of guesses
+        """
+        minpars, maxpars = np.asarray([minpars, maxpars])
+        guess_grid = self._grid_parspace(minpars, maxpars, finesse)
+
+        # expanding the parameter boundaries
+        minpars, maxpars = (
+            np.vstack([self.fiteach_args['minpars'], minpars]).min(axis=0),
+            np.vstack([self.fiteach_args['maxpars'], maxpars]).max(axis=0) )
+
+        self.fiteach_args['minpars'] = minpars
+        self.fiteach_args['maxpars'] = maxpars
+
+        self.guess_grid = np.append(self.guess_grid, guess_grid, axis=0)
+        return self.guess_grid
+
+    def _grid_parspace(self, minpars, maxpars, finesse):
+        """
+        The actual gridding takes place here.
+        See SubCube.make_guess_grid for details.
+        """
         npars = minpars.size
 
         # conformity for finesse: int or np.array goes in and np.array goes out
         finesse = np.atleast_1d(finesse) * np.ones(npars)
 
-        log.info("Binning the %i-dimensional parameter space into a %s-shaped grid" %
+        log.info("Binning the %i-dimensional parameter"
+                 " space into a %s-shaped grid" %
                  (npars, str(tuple(finesse.astype(int)))))
 
         par_space = []
@@ -114,13 +150,8 @@ class SubCube(pyspeckit.Cube):
             par_space.append(np.linspace(i_min, i_max, i_len))
 
         nguesses = np.prod(map(len,par_space))
-        guess_grid = np.array(np.meshgrid(*par_space)).reshape(npars, nguesses).T
-        
-        # this flips all the dimensions, might have some troubles should 
-        # I want to scale this up later for a multidimensional case
-        self.guess_grid = guess_grid
 
-        return guess_grid
+        return np.array(np.meshgrid(*par_space)).reshape(npars, nguesses).T
 
     def generate_model(self, guess_grid=None, to_file=None, redo=True):
         """
