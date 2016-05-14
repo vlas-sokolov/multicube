@@ -136,6 +136,12 @@ class SubCube(pyspeckit.Cube):
         The actual gridding takes place here.
         See SubCube.make_guess_grid for details.
         """
+        # don't want to go though (often lengthy) model
+        # generation just to have fiteach fail, do we?
+        if np.any(minpars>maxpars):
+            log.error("Some of the minimal parameters are larger"
+                      " than the maximal ones. Normally this is "
+                      "not supposed to happen.")
         npars = minpars.size
 
         # conformity for finesse: int or np.array goes in and np.array goes out
