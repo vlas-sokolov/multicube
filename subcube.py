@@ -48,7 +48,7 @@ class SubCube(pyspeckit.Cube):
         self.fittype = fit_type
 
     def make_guess_grid(self, minpars, maxpars, finesse, fixed=None,
-                        limitedmin=None, limitedmax=None):
+                        limitedmin=None, limitedmax=None, **kwargs):
         """
         Given parameter ranges and a finesse parameter, generate a grid of 
         guesses in a parameter space to be iterated upon in self.best_guess
@@ -99,13 +99,13 @@ class SubCube(pyspeckit.Cube):
         if self.fittype is 'gaussian':
             self.fiteach_args.pop('fixed')
  
-        guess_grid = self._grid_parspace(minpars, maxpars, finesse)
+        guess_grid = self._grid_parspace(minpars, maxpars, finesse, **kwargs)
 
         self.guess_grid = guess_grid
 
         return guess_grid
 
-    def expand_guess_grid(self, minpars, maxpars, finesse):
+    def expand_guess_grid(self, minpars, maxpars, finesse, **kwargs):
         """
         Useful for "chunky" discontinuities in parameter space.
 
@@ -118,7 +118,7 @@ class SubCube(pyspeckit.Cube):
         guess_grid : an updated grid of guesses
         """
         minpars, maxpars = np.asarray([minpars, maxpars])
-        guess_grid = self._grid_parspace(minpars, maxpars, finesse)
+        guess_grid = self._grid_parspace(minpars, maxpars, finesse, **kwargs)
 
         # expanding the parameter boundaries
         minpars, maxpars = (
@@ -131,10 +131,22 @@ class SubCube(pyspeckit.Cube):
         self.guess_grid = np.append(self.guess_grid, guess_grid, axis=0)
         return self.guess_grid
 
-    def _grid_parspace(self, minpars, maxpars, finesse):
+    def _grid_parspace(self, minpars, maxpars, finesse, clip_edges=True):
         """
         The actual gridding takes place here.
         See SubCube.make_guess_grid for details.
+
+        Parameters
+        ----------
+        minpars : np.array containing minimal parameter values
+
+        maxpars : np.array containing maximal parameter values
+
+        finesse : np.array setting the size of cells between minimal
+                  and maximal values in the resulting guess grid
+
+        clip_edges : boolean; if True, the edge values are not
+                     included in the guess grid
         """
         # don't want to go though (often lengthy) model
         # generation just to have fiteach fail, do we?
@@ -152,8 +164,10 @@ class SubCube(pyspeckit.Cube):
                  (npars, str(tuple(finesse.astype(int)))))
 
         par_space = []
-        for i_len, i_min, i_max in zip(finesse, minpars, maxpars):
-            par_space.append(np.linspace(i_min, i_max, i_len))
+        for i_len, i_min, i_max in zip(finesse+clip_edges*2, minpars, maxpars):
+            par_slice_1d = (np.linspace(i_min, i_max, i_len) if not clip_edges
+                            else np.linspace(i_min, i_max, i_len)[1:][:-1]    )
+            par_space.append(par_slice_1d)
 
         nguesses = np.prod(map(len,par_space))
 
