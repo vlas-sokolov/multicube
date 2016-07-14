@@ -873,6 +873,8 @@ class SubCube(pyspeckit.Cube):
                 near_guesses = self.parcube[:, (ypatch+y)[local_fits],
                                                (xpatch+x)[local_fits] ].T
                 ggrid = np.vstack([gg, near_guesses])
+                # for some reason nan values creep through!
+                ggrid = np.array([val for val in ggrid if np.all(np.isfinite(val))])
                 resid = [(sp.data - sp.specfit.get_full_model(pars=iguess)).std()
                             for iguess in ggrid]
                 gg = ggrid[np.argmin(resid)]
