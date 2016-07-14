@@ -704,8 +704,8 @@ class SubCube(pyspeckit.Cube):
         """
         Fit a spectrum to each valid pixel in the cube
 
-        For guesses, priority is *use_nearest_as_guess*, *usemomentcube*,
-        *guesses*, None
+        For guesses, priority is *use_best_as_guess* *use_nearest_as_guess*,
+        *usemomentcube*, *guesses*, None
 
         Once you have successfully run this function, the results will be
         stored in the ``.parcube`` and ``.errcube`` attributes, which are each
