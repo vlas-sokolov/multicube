@@ -278,6 +278,7 @@ class SubCube(pyspeckit.Cube):
         if model_grid is None:
             if from_file is not None:
                 model_grid = np.load(from_file, **kwargs)
+                self.model_grid = model_grid
             elif self.model_grid is None:
                 raise TypeError('sooo the model_grid is empty, '
                                 'did you run generate_model()?')
