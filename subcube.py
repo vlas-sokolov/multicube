@@ -696,11 +696,11 @@ class SubCube(pyspeckit.Cube):
     #       really want this in the master branch? Probably not.
     # New feature:
     # * use_best_as_guess argument
-    def fiteach(self, errmap=None, guesses=(), verbose=True, verbose_level=1,
-                quiet=True, signal_cut=3, usemomentcube=None, blank_value=0,
-                use_neighbor_as_guess=False, use_best_as_guess=False,
-                start_from_point=(0,0), multicore=1, position_order=None,
-                maskmap=None, **fitkwargs):
+    def fiteach(self, errmap=None, snrmap=None, guesses=(), verbose=True,
+                verbose_level=1, quiet=True, signal_cut=3, usemomentcube=None,
+                blank_value=0, use_neighbor_as_guess=False,
+                use_best_as_guess=False, start_from_point=(0,0), multicore=1,
+                position_order=None, maskmap=None, **fitkwargs):
         """
         Fit a spectrum to each valid pixel in the cube
 
@@ -735,6 +735,10 @@ class SubCube(pyspeckit.Cube):
         guesses: tuple or ndarray[naxis=3]
             Either a tuple/list of guesses with len(guesses) = npars or a cube
             of guesses with shape [npars, ny, nx].
+        errmap: ndarray[naxis=2]
+            A map of rms of the noise to use for signal cutting.
+        snrmap: ndarray[naxis=2]
+            A map of signal-to-noise ratios to use. Overrides errmap.
         signal_cut: float
             Minimum signal-to-noise ratio to "cut" on (i.e., if peak in a given
             spectrum has s/n less than this value, ignore it)
@@ -845,9 +849,8 @@ class SubCube(pyspeckit.Cube):
                 if verbose_level > 1 and ii==0:
                     log.warn("using data std() as error.")
                 sp.error[:] = sp.data[sp.data==sp.data].std()
-            if sp.error is not None and signal_cut > 0:
-                snr = sp.data / sp.error
-                max_sn = np.nanmax(snr)
+            if (sp.error is not None or snrmap is not None) and signal_cut > 0:
+                max_sn = snrmap[y,x] or np.nanmax(sp.data / sp.error)
                 if max_sn < signal_cut:
                     if verbose_level > 1:
                         log.info("Skipped %4i,%4i (s/n=%0.2g)" % (x,y,max_sn))
@@ -995,9 +998,10 @@ class SubCube(pyspeckit.Cube):
                 fit_a_pixel((ii,x,y))
 
         sp = self.get_spectrum(*valid_pixels[0])
-        sp.specfit(guesses = self.parcube[:,
-                    valid_pixels[0][1],valid_pixels[0][0]],
+        y0,x0 = start_from_point
+        sp.specfit(guesses = self.parcube[:,y0,x0],
                     fittype = self.specfit.fittype)
+
         # March 27, 2014: This is EXTREMELY confusing.  This isn't in a loop...
         # make sure the fitter / fittype are set for the cube
         # this has to be done within the loop because skipped-over spectra
