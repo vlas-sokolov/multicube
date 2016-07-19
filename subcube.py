@@ -998,18 +998,9 @@ class SubCube(pyspeckit.Cube):
             for ii,(x,y) in enumerate(valid_pixels):
                 fit_a_pixel((ii,x,y))
 
-        sp = self.get_spectrum(*valid_pixels[0])
-        y0,x0 = start_from_point
-        sp.specfit(guesses = self.parcube[:,y0,x0],
-                    fittype = self.specfit.fittype)
-
-        # March 27, 2014: This is EXTREMELY confusing.  This isn't in a loop...
-        # make sure the fitter / fittype are set for the cube
-        # this has to be done within the loop because skipped-over spectra
-        # don't ever get their fittypes set
-        self.specfit.fitter = sp.specfit.fitter
-        self.specfit.fittype = sp.specfit.fittype
-        self.specfit.parinfo = sp.specfit.parinfo
+        # this replaces the previous approach that did an additional fit
+        # at a first valid pixel and copied the resulting fitter to a Cube
+        self.specfit.parinfo = self.specfit.fitter.parinfo
 
         if verbose:
             log.info("Finished final fit %i.  "
