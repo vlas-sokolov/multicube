@@ -35,6 +35,8 @@ class SubCube(pyspeckit.Cube):
         self.guess_grid = None
         self.model_grid = None
 
+    # TODO: investigate whether pyspeckit's #179 needs to be hacked
+    #       around inside either update_model or make_guess_grid methods
     def update_model(self, fit_type='gaussian'):
         """
         Tie a model to a SubCube. Should work for all the standard
@@ -115,7 +117,7 @@ class SubCube(pyspeckit.Cube):
 
         Works as SubCube.make_guess_grid, but instead of creating guess_grid
         from scratch, the new guess grid is appended to an existing one.
-        Parameter limits information is extended to accomodate the new grid.
+        Parameter limits information is extended to accommodate the new grid.
 
         Returns
         -------
@@ -203,6 +205,9 @@ class SubCube(pyspeckit.Cube):
         redo : boolean; if False and to_file filename is in place, the
                model gird will not be generated anew
         """
+        # TODO: add the peak_trim argument to reduce the number of models
+        # TODO: add an argument that removes models that are separated by
+        #       less than a required spacing between two parameters
 
         if not redo and os.path.isfile(to_file):
             log.info("A file with generated models is "
@@ -288,7 +293,7 @@ class SubCube(pyspeckit.Cube):
         # TODO: allow for all the possible outputs from generate_model()
         if model_grid.shape[-1]!=self.cube.shape[0]:
             raise ValueError("Invalid shape for the guess_grid, "
-                             "check the docsting for details.")
+                             "check the docstring for details.")
         if len(model_grid.shape)>2:
             raise NotImplementedError("Complex model girds aren't supported.")
 
@@ -329,7 +334,7 @@ class SubCube(pyspeckit.Cube):
             except MemoryError: # catching memory errors could be really bad!
                 log.warn("Not enough memory to broadcast model grid to the "
                          "XY grid. This is bad for a number of reasons, the "
-                         "formost of which: the running time just went "
+                         "foremost of which: the running time just went "
                          "through the roof. Leave it overnight maybe?")
                 best_map = np.empty(shape=(self.cube.shape[1:]))
                 rmsmin_map = np.empty(shape=(self.cube.shape[1:]))
