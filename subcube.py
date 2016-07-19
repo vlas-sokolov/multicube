@@ -106,6 +106,7 @@ class SubCube(pyspeckit.Cube):
             self.fiteach_args.pop('fixed')
  
         guess_grid = self._grid_parspace(minpars, maxpars, finesse, **kwargs)
+        guess_grid = self._remove_close_peaks(guess_grid, **kwargs)
 
         self.guess_grid = guess_grid
 
@@ -125,6 +126,7 @@ class SubCube(pyspeckit.Cube):
         """
         minpars, maxpars = np.asarray([minpars, maxpars])
         guess_grid = self._grid_parspace(minpars, maxpars, finesse, **kwargs)
+        guess_grid = self._remove_close_peaks(guess_grid, **kwargs)
 
         # expanding the parameter boundaries
         minpars, maxpars = (
@@ -137,7 +139,8 @@ class SubCube(pyspeckit.Cube):
         self.guess_grid = np.append(self.guess_grid, guess_grid, axis=0)
         return self.guess_grid
 
-    def _grid_parspace(self, minpars, maxpars, finesse, clip_edges=True):
+    def _grid_parspace(self, minpars, maxpars, finesse, clip_edges=True,
+                       spacing=None, npeaks=None, **kwargs):
         """
         The actual gridding takes place here.
         See SubCube.make_guess_grid for details.
@@ -179,7 +182,46 @@ class SubCube(pyspeckit.Cube):
 
         return np.array(np.meshgrid(*par_space)).reshape(npars, nguesses).T
 
-    def generate_model(self, guess_grid=None, to_file=None, redo=True):
+    def _remove_close_peaks(self, guess_grid=None, spacing=[],
+                            which=[], npeaks=2, **kwargs):
+        """
+        Removes the guesses for multiple components where given parameters
+        are closer than desired. Ideally this should speed up the subsequent
+        analysis *and* remove components that would converge into one.
+
+        Parameters
+        ----------
+        spacing : float or iterable; minimal separation along `which` dims
+
+        which   : int or iterable;
+               Indices for parameters to filter, same shape as `spacing`
+
+        npeaks  : int > 1; how many components were passed to make_guess_grid
+                  NOTE: only npeaks = 2 is supported for now...
+        """
+        if guess_grid is None:
+            try:
+                guess_grid = self.guess_grid
+            except AttributeError:
+                raise RuntimeError("Can't find the guess grid to use.")
+
+        if npeaks!=2:
+            raise NotImplementedError("WIP, sorry :/")
+
+        # TODO: expand to min/max filtering
+        spacing, which = np.atleast_1d(spacing), np.atleast_1d(which)
+        npars = guess_grid.shape[1] / npeaks
+
+        # for every parameter space dimension to look into
+        for dp, i in zip(spacing, which):
+            m = np.abs(guess_grid[:,i]-guess_grid[:,i+npars]) > dp
+            print "Removing...", guess_grid[~m][:,4], guess_grid[~m][:,10]
+            guess_grid = guess_grid[m]
+        #import pdb; pdb.set_trace()
+        return guess_grid
+
+    def generate_model(self, guess_grid=None, to_file=None, redo=True,
+                       cut=None, npeaks=None):
         """
         Generates a grid of spectral models matching the
         shape of the input guess_grid array. Can take the
@@ -206,8 +248,6 @@ class SubCube(pyspeckit.Cube):
                model gird will not be generated anew
         """
         # TODO: add the peak_trim argument to reduce the number of models
-        # TODO: add an argument that removes models that are separated by
-        #       less than a required spacing between two parameters
 
         if not redo and os.path.isfile(to_file):
             log.info("A file with generated models is "
@@ -218,7 +258,7 @@ class SubCube(pyspeckit.Cube):
             try:
                 guess_grid = self.guess_grid
             except AttributeError:
-                raise RuntimeError("Can't find the guess grid to use,")
+                raise RuntimeError("Can't find the guess grid to use.")
 
         # safeguards preventing wrong output shapes
         npars = self.specfit.fitter.npars
