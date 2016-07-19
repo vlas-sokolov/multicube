@@ -1012,8 +1012,6 @@ class SubCubeStack(SubCube, pyspeckit.CubeStack):
     """
     def __init__(self,*args):
         super(SubCubeStack, self).__init__(*args)
-        log.warn("Doing something horrible with multiple "
-                 "inheritance. Needs to be tested more.")
 
 # taken directly from pyspeckit.cubes, 
 # I can't seem to import it for some reason
