@@ -218,7 +218,15 @@ class SubCube(pyspeckit.Cube):
             guess_grid = guess_grid[m]
         return guess_grid
 
-    def _you_shall_not_pass(self, gg, cut=None, backup_pars=None, **kwargs):
+    def you_shall_not_pass(self, gg, cut=None, backup_pars=None, **kwargs):
+        """
+        Generates a spectral model from parameters while enforcing a minimum
+        peak amplitude requirement given by `cut`. Model components below the
+        threshold are replaced by a zero model from `backup_pars`.
+
+        This filtering is not switched on by default, but only if a `cut` is
+        passed to **kwargs of `generate_model` method.
+        """
         # TODO: seems to work, but needs more testing
         # TODO: the input arguments are ugly, rewrite
         if cut is None:
@@ -266,8 +274,10 @@ class SubCube(pyspeckit.Cube):
 
         redo : boolean; if False and to_file filename is in place, the
                model gird will not be generated anew
+
+        Additional keyword arguments are passed to a filter function
+        `SubCube.you_shall_not_pass()`
         """
-        # TODO: add the peak_trim argument to reduce the number of models
 
         if not redo and os.path.isfile(to_file):
             log.info("A file with generated models is "
@@ -295,8 +305,8 @@ class SubCube(pyspeckit.Cube):
         log.info("Generating spectral models from the guess grid . . .")
         with ProgressBar(model_grid.shape[0]) as bar:
             for idx in np.ndindex(grid_shape):
-                model_grid[idx], gg = self._you_shall_not_pass(guess_grid[idx],
-                                                               **kwargs       )
+                model_grid[idx], gg = self.you_shall_not_pass(guess_grid[idx],
+                                                              **kwargs       )
                 if not np.all(np.equal(gg, guess_grid[idx])):
                     self.guess_grid[idx] = gg # TODO: why pass guess_grid then?
                 bar.update()
