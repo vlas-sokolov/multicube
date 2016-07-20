@@ -215,13 +215,33 @@ class SubCube(pyspeckit.Cube):
         # for every parameter space dimension to look into
         for dp, i in zip(spacing, which):
             m = np.abs(guess_grid[:,i]-guess_grid[:,i+npars]) > dp
-            print "Removing...", guess_grid[~m][:,4], guess_grid[~m][:,10]
             guess_grid = guess_grid[m]
-        #import pdb; pdb.set_trace()
         return guess_grid
 
+    def _you_shall_not_pass(self, gg, cut=None, backup_pars=None, **kwargs):
+        # TODO: seems to work, but needs more testing
+        # TODO: the input arguments are ugly, rewrite
+        if cut is None:
+            return self.specfit.get_full_model(pars=gg), gg
+        else: # now we need to check the peak amplitude for each comp
+            npeaks_old = self.specfit.fitter.npeaks
+            self.specfit.fitter.npeaks = 1
+            npars = gg.shape[0] / npeaks_old
+            gg_new = []
+            tot_model = np.zeros_like(self.xarr.value)
+            for i in range(npeaks_old):
+                np_gg = list(gg[i*npars:(i+1)*npars])
+                model = self.specfit.get_full_model(pars = np_gg)
+                if model.max() > cut[i]:
+                    gg_new += np_gg
+                    tot_model += model
+                else:
+                    gg_new += backup_pars[i]
+            self.specfit.fitter.npeaks = npeaks_old
+            return tot_model, gg_new
+
     def generate_model(self, guess_grid=None, to_file=None, redo=True,
-                       cut=None, npeaks=None):
+                       npeaks=None, **kwargs):
         """
         Generates a grid of spectral models matching the
         shape of the input guess_grid array. Can take the
@@ -275,8 +295,10 @@ class SubCube(pyspeckit.Cube):
         log.info("Generating spectral models from the guess grid . . .")
         with ProgressBar(model_grid.shape[0]) as bar:
             for idx in np.ndindex(grid_shape):
-                model_grid[idx] = \
-                    self.specfit.get_full_model(pars=guess_grid[idx])
+                model_grid[idx], gg = self._you_shall_not_pass(guess_grid[idx],
+                                                               **kwargs       )
+                if not np.all(np.equal(gg, guess_grid[idx])):
+                    self.guess_grid[idx] = gg # TODO: why pass guess_grid then?
                 bar.update()
 
         if to_file is not None:
