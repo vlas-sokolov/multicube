@@ -7,8 +7,10 @@ import pyspeckit
 import os
 
 # imports for the test fiteach redefinition
-import time, itertools
+import time
+import itertools
 from astropy.extern.six import string_types
+
 
 class SubCube(pyspeckit.Cube):
     """
@@ -769,6 +771,7 @@ class SubCube(pyspeckit.Cube):
 
     #    return np.log(likelihood)
 
+
     # Taken directly from pyspeckit.cubes.fiteach()!
     # TODO: this is suitable for my personal needs only. Do I
     #       really want this in the master branch? Probably not.
@@ -1083,12 +1086,14 @@ class SubCube(pyspeckit.Cube):
             log.info("Finished final fit %i.  "
                      "Elapsed time was %0.1f seconds" % (len(valid_pixels), time.time()-t0))
 
+
 class SubCubeStack(SubCube, pyspeckit.CubeStack):
     """
     SubCube analogy for CubeStack objects.
     """
     def __init__(self,*args):
         super(SubCubeStack, self).__init__(*args)
+
 
 # taken directly from pyspeckit.cubes, 
 # I can't seem to import it for some reason
