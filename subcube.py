@@ -89,8 +89,8 @@ class SubCube(pyspeckit.Cube):
         ['fixed', 'limitedmin', 'limitedmax', 'minpars', 'maxpars']
         """
         minpars, maxpars = np.asarray([minpars, maxpars])
-        truths, falses = np.ones(minpars.shape, dtype=bool), \
-                         np.zeros(minpars.shape, dtype=bool)
+        truths, falses = (np.ones(minpars.shape, dtype=bool),
+                          np.zeros(minpars.shape, dtype=bool))
 
         fixed = falses if fixed is None else fixed
         limitedmin = truths if limitedmin is None else limitedmin
@@ -396,12 +396,12 @@ class SubCube(pyspeckit.Cube):
                 if type(model_grid) is not np.ndarray: # assume memmap type
                     raise MemoryError("This will take ages, skipping to "
                                       "the no-broadcasting scenario.")
-                residual_rms = np.empty(shape=((model_grid.shape[0],)+
-                                                self.cube.shape[1:]   ))
+                residual_rms = np.empty(shape=((model_grid.shape[0],)
+                                               + self.cube.shape[1:]))
                 with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
                     for (y,x) in np.ndindex(self.cube.shape[1:]):
-                        residual_rms[:,y,x] = (self.cube[None,:,y,x] -
-                                                    model_grid).std(axis=1)
+                        residual_rms[:,y,x] = (self.cube[None,:,y,x]
+                                               - model_grid).std(axis=1)
                         bar.update()
             except MemoryError: # catching memory errors could be really bad!
                 log.warn("Not enough memory to broadcast model grid to the "
@@ -414,8 +414,8 @@ class SubCube(pyspeckit.Cube):
                     snr_mask = self.snr_map > sn_cut
                 # TODO: this takes ages! refactor this through hdf5
                 # "chunks" of acceptable size, and then broadcast them!
-                with ProgressBar(np.prod((model_grid.shape[0],)+
-                                          self.cube.shape[1:]  )) as bar:
+                with ProgressBar(np.prod((model_grid.shape[0],)
+                                         + self.cube.shape[1:])) as bar:
                     for (y,x) in np.ndindex(self.cube.shape[1:]):
                         if sn_cut:
                             if not snr_mask[y,x]:
@@ -423,8 +423,8 @@ class SubCube(pyspeckit.Cube):
                                 continue
                         resid_rms_xy = np.empty(shape=model_grid.shape[0])
                         for model_id in np.ndindex(model_grid.shape[0]):
-                            resid_rms_xy[model_id] = (self.cube[:,y,x] -
-                                                  model_grid[model_id]).std()
+                            resid_rms_xy[model_id] = (self.cube[:,y,x]
+                                                + model_grid[model_id]).std()
                             bar.update()
                         best_map[y,x] = np.argmin(resid_rms_xy)
                         rmsmin_map[y,x] = np.nanmin(resid_rms_xy)
@@ -434,8 +434,8 @@ class SubCube(pyspeckit.Cube):
             #       will cause memory overflows.
             #       The code above tried to catch this before it happens
             #       and run things in a slower fashion.
-            residual_rms = (self.cube[None,:,:,:]-
-                                model_grid[:,:,None,None]).std(axis=1)
+            residual_rms = (self.cube[None,:,:,:]
+                            + model_grid[:,:,None,None]).std(axis=1)
 
         if sn_cut:
             snr_mask = self.snr_map > sn_cut
@@ -451,8 +451,8 @@ class SubCube(pyspeckit.Cube):
         model_mode = mode(best_map)
         best_model_num = model_mode[0][0,0]
         best_model_freq = model_mode[1][0,0]
-        best_model_frac = (float(best_model_freq) /
-                            np.prod(self.cube.shape[1:]))
+        best_model_frac = (float(best_model_freq)
+                           / np.prod(self.cube.shape[1:]))
         if best_model_frac < .05:
             log.warn("Selected model is best only for less than %5 "
                      "of the cube, consider using the map of guesses.")
@@ -521,16 +521,16 @@ class SubCube(pyspeckit.Cube):
         if signal is None:
             # find signal cuts for the current unit?
             # nah let's just do it in pixels, shall we?
-            i_low, i_high = int(round(self.xarr.size *    default_cut )),\
-                            int(round(self.xarr.size * (1-default_cut)))
+            i_low, i_high = (int(round(self.xarr.size *    default_cut )),
+                             int(round(self.xarr.size * (1-default_cut))))
             signal = [[i_low+1], [i_high-1]]
             unit['signal'] = 'pixel'
 
         if noise is None:
             # find signal cuts for the current unit?
             # nah let's just do it in pixels, shall we?
-            i_low, i_high = int(round(self.xarr.size *    default_cut )),\
-                            int(round(self.xarr.size * (1-default_cut)))
+            i_low, i_high = (int(round(self.xarr.size *    default_cut )),
+                             int(round(self.xarr.size * (1-default_cut))))
             noise = [[0, i_high], [i_low, self.xarr.size-1]]
             unit['noise'] = 'pixel'
 
@@ -543,8 +543,8 @@ class SubCube(pyspeckit.Cube):
         self._mask_noise = noise_mask
 
         # no need to care about units at this point
-        snr_map = self.get_signal_map(signal_mask) / \
-                             self.get_rms_map(noise_mask)
+        snr_map = (self.get_signal_map(signal_mask)
+                   / self.get_rms_map(noise_mask))
         self.snr_map = snr_map
         return snr_map
 
@@ -572,8 +572,8 @@ class SubCube(pyspeckit.Cube):
                 self.xarr.convert_to_unit(unit_bkp)
             else: 
                 try:
-                    index_low, index_high = int(low.value ),\
-                                            int(high.value)
+                    index_low, index_high = (int(low.value ),
+                                             int(high.value))
                 except AttributeError:
                     index_low, index_high = int(low), int(high)
 
@@ -763,8 +763,8 @@ class SubCube(pyspeckit.Cube):
     #        sigma = self._rms_map
 
     #    # TODO: resolve extreme exponent values or risk overflowing
-    #    likelihood=np.exp(-self.chi_squared/2)* \
-    #           (sigma*np.sqrt(2*np.pi))**(-self.xarr.size)
+    #    likelihood = (np.exp(-self.chi_squared/2)
+    #                  * (sigma*np.sqrt(2*np.pi))**(-self.xarr.size))
     #    self.likelihood = np.log(likelihood)
 
     #    return np.log(likelihood)
