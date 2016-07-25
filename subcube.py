@@ -743,6 +743,7 @@ class SubCube(pyspeckit.Cube):
 
         method : what to draw. 'box' and 'cross' are supported
         """
+        # TODO: if ax is None take it from self.mapplot.axis
         x, y = xy
         if method is 'box':
             ax.plot([x-.5,x-.5,x+.5,x+.5,x-.5], 
@@ -754,6 +755,25 @@ class SubCube(pyspeckit.Cube):
         else:
             raise ValueError("unknown method %s passed to "
                              "the doodling function" % method)
+
+    def _doodle_box(self, ax, xy1, xy2, **kwargs):
+        """
+        Draws a box on the axis.
+
+        Parameters
+        ----------
+        ax : axis to doodle on
+
+        xy1 : xy coordinate tuple, a box corner
+
+        xy2 : xy coordinate tuple, an opposite box corner
+        """
+        # TODO: merge _doodle_box with _doodle_xy
+        x0, y0 = (np.array(xy1)+np.array(xy2))/2.
+        dx, dy = np.abs((np.array(xy1)-np.array(xy2))/2.)
+        ax.plot([x0-dx-.5,x0-dx-.5,x0+dx+.5,x0+dx+.5,x0-dx-.5], 
+                [y0-dy-.5,y0+dy+.5,y0+dy+.5,y0-dy-.5,y0-dy-.5], 
+                **kwargs)
 
     def get_likelihood(self, sigma = None):
         """
