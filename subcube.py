@@ -441,7 +441,8 @@ class SubCube(pyspeckit.Cube):
 
         if sn_cut:
             snr_mask = self.snr_map > sn_cut
-            residual_rms[self.get_slice_mask(snr_mask)] = np.inf
+            zlen = residual_rms.shape[0]
+            residual_rms[~self.get_slice_mask(snr_mask, zlen)] = np.inf
 
         best_map   = np.argmin(residual_rms, axis=0)
         rmsmin_map = residual_rms.min(axis=0)
@@ -473,11 +474,17 @@ class SubCube(pyspeckit.Cube):
             log.warn("Can't find the SNR map, best guess at "
                      "highest SNR pixel will not be stored.")
 
-    def get_slice_mask(self, mask2d):
+    def get_slice_mask(self, mask2d, notxarr=None):
         """
         In case we ever want to apply a 2d mask to a whole cube.
+
+        Parameters
+        ----------
+        notxarr : if set, will be used as a length of a 3rd dim;
+                  Otherwise, size of self.xarr is used.
         """
-        mask3d = np.repeat([mask2d],self.xarr.size,axis=0)
+        zlen = notxarr if notxarr else self.xarr.size
+        mask3d = np.repeat([mask2d], zlen, axis=0)
         return mask3d
 
     def get_snr_map(self, signal=None, noise=None, unit='km/s', 
