@@ -802,6 +802,10 @@ class SubCube(pyspeckit.Cube):
     # Taken directly from pyspeckit.cubes.fiteach()!
     # TODO: this is suitable for my personal needs only. Do I
     #       really want this in the master branch? Probably not.
+    # TODO: roadmap for the function and the branch:
+    #       - allow cubes of minmax/fixed args to be passed here
+    #       - rename it to multifit
+    #       - merge to master
     # New feature:
     # * use_best_as_guess argument
     def fiteach(self, errmap=None, snrmap=None, guesses=(), verbose=True,
