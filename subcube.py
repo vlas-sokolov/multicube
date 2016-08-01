@@ -838,11 +838,13 @@ class SubCube(pyspeckit.Cube):
         to zero amplitude models.
         """
         argdict = fiteachargs or self.fiteach_args
+        # NOTE: why lists? well pyspeckit doesn't always like arrays
         try:
             return {key: list(val[:,y,x]) if hasattr(argdict[key],'shape')
                          else val for key, val in argdict.iteritems()}
         except IndexError:
-            return {key: val for key, val in argdict.iteritems()}
+            return {key: list(val) if type(val) is np.ndarray else val
+                    for key, val in argdict.iteritems()}
 
     def _fiteach_args_to_3d(self):
         """
