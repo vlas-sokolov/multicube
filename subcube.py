@@ -437,7 +437,7 @@ class SubCube(pyspeckit.Cube):
             #       The code above tried to catch this before it happens
             #       and run things in a slower fashion.
             residual_rms = (self.cube[None,:,:,:]
-                            + model_grid[:,:,None,None]).std(axis=1)
+                            - model_grid[:,:,None,None]).std(axis=1)
 
         if sn_cut:
             snr_mask = self.snr_map > sn_cut
