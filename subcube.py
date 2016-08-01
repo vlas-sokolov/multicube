@@ -104,17 +104,22 @@ class SubCube(pyspeckit.Cube):
                              'maxpars'   : maxpars    }
 
         # TODO: why does 'fixed' break the gaussian fitter?
-        if self.fittype is 'gaussian':
-            self.fiteach_args.pop('fixed')
+        #if self.fittype is 'gaussian':
+        #    self.fiteach_args.pop('fixed')
  
         guess_grid = self._grid_parspace(minpars, maxpars, finesse, **kwargs)
         guess_grid = self._remove_close_peaks(guess_grid, **kwargs)
+
+        self.fiteach_arg_grid = {key: np.repeat([val], guess_grid.shape[0],
+                                 axis=0) for key, val in
+                                 self.fiteach_args.iteritems()}
 
         self.guess_grid = guess_grid
 
         return guess_grid
 
-    def expand_guess_grid(self, minpars, maxpars, finesse, **kwargs):
+    def expand_guess_grid(self, minpars, maxpars, finesse, fixed=None,
+                        limitedmin=None, limitedmax=None, **kwargs):
         """
         Useful for "chunky" discontinuities in parameter space.
 
@@ -137,6 +142,26 @@ class SubCube(pyspeckit.Cube):
 
         self.fiteach_args['minpars'] = minpars
         self.fiteach_args['maxpars'] = maxpars
+
+        # updating the fiteach_arg grid
+        truths, falses = (np.ones(minpars.shape, dtype=bool),
+                          np.zeros(minpars.shape, dtype=bool))
+
+        fixed = falses if fixed is None else fixed
+        limitedmin = truths if limitedmin is None else limitedmin
+        limitedmax = truths if limitedmax is None else limitedmax
+        expand_dict = {'fixed'     : fixed,
+                       'limitedmin': limitedmin,
+                       'limitedmax': limitedmax,
+                       'minpars'   : minpars,
+                       'maxpars'   : maxpars    }
+
+        for key, val in expand_dict.iteritems():
+            expander = np.repeat([expand_dict[key]],
+                                 np.prod(np.atleast_1d(finesse)),
+                                 axis=0)
+            self.fiteach_arg_grid[key] = np.append(self.fiteach_arg_grid[key],
+                                                   expander, axis=0)
 
         self.guess_grid = np.append(self.guess_grid, guess_grid, axis=0)
         return self.guess_grid
@@ -449,6 +474,9 @@ class SubCube(pyspeckit.Cube):
         self._best_map    = best_map
         self._best_rmsmap = rmsmin_map
         self.best_guesses = np.rollaxis(self.guess_grid[best_map],-1)
+        self.best_fitargs = \
+            {key: np.rollaxis(self.fiteach_arg_grid[key][best_map],-1)
+                    for key in self.fiteach_arg_grid.keys()}
 
         from scipy.stats import mode
         model_mode = mode(best_map)
@@ -811,7 +839,8 @@ class SubCube(pyspeckit.Cube):
         """
         argdict = fiteachargs or self.fiteach_args
         try:
-            return {key: val[:,y,x] for key, val in argdict.iteritems()}
+            return {key: list(val[:,y,x]) if hasattr(argdict[key],'shape')
+                         else val for key, val in argdict.iteritems()}
         except IndexError:
             return {key: val for key, val in argdict.iteritems()}
 
