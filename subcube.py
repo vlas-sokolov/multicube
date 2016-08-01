@@ -888,7 +888,6 @@ class SubCube(pyspeckit.Cube):
             This will be used for both plotting using `mapplot` and fitting
             using `fiteach`.  If ``None``, will use ``self.maskmap``.
         """
-        import pdb; pdb.set_trace()
         if not hasattr(self.mapplot,'plane'):
             self.mapplot.makeplane()
 
