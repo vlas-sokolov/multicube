@@ -426,7 +426,7 @@ class SubCube(pyspeckit.Cube):
                         resid_rms_xy = np.empty(shape=model_grid.shape[0])
                         for model_id in np.ndindex(model_grid.shape[0]):
                             resid_rms_xy[model_id] = (self.cube[:,y,x]
-                                                + model_grid[model_id]).std()
+                                                - model_grid[model_id]).std()
                             bar.update()
                         best_map[y,x] = np.argmin(resid_rms_xy)
                         rmsmin_map[y,x] = np.nanmin(resid_rms_xy)
