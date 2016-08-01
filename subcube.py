@@ -798,6 +798,22 @@ class SubCube(pyspeckit.Cube):
 
     #    return np.log(likelihood)
 
+    def _unpack_fitkwargs(self, x, y, fiteachargs=None):
+        """
+        A gateway method that allows 3d arrays of fitkwargs elements to
+        be passed along to fiteach, and, consequently, to the underlying
+        specfit subroutines.
+
+        In principle, this also allows to hack multiple values of npeak
+        within one fiteach call... Just have to let those xy positions to
+        have fixed[npars*npeaks:] = True or something and set the guesses
+        to zero amplitude models.
+        """
+        argdict = fiteachargs or self.fiteach_args
+        try:
+            return {key: val[:,y,x] for key, val in argdict.iteritems()}
+        except IndexError:
+            return {key: val for key, val in argdict.iteritems()}
 
     # Taken directly from pyspeckit.cubes.fiteach()!
     # TODO: this is suitable for my personal needs only. Do I
@@ -812,7 +828,7 @@ class SubCube(pyspeckit.Cube):
                 verbose_level=1, quiet=True, signal_cut=3, usemomentcube=None,
                 blank_value=0, use_neighbor_as_guess=False,
                 use_best_as_guess=False, start_from_point=(0,0), multicore=1,
-                position_order=None, maskmap=None, **fitkwargs):
+                position_order=None, maskmap=None, **kwargs):
         """
         Fit a spectrum to each valid pixel in the cube
 
@@ -872,6 +888,7 @@ class SubCube(pyspeckit.Cube):
             This will be used for both plotting using `mapplot` and fitting
             using `fiteach`.  If ``None``, will use ``self.maskmap``.
         """
+        import pdb; pdb.set_trace()
         if not hasattr(self.mapplot,'plane'):
             self.mapplot.makeplane()
 
@@ -926,8 +943,8 @@ class SubCube(pyspeckit.Cube):
         self.errcube = np.zeros((npars,)+self.mapplot.plane.shape)
 
         # newly needed as of March 27, 2012.  Don't know why.
-        if 'fittype' in fitkwargs:
-            self.specfit.fittype = fitkwargs['fittype']
+        if 'fittype' in kwargs:
+            self.specfit.fittype = kwargs['fittype']
         self.specfit.fitter = self.specfit.Registry.multifitters[self.specfit.fittype]
 
         # TODO: VALIDATE THAT ALL GUESSES ARE WITHIN RANGE GIVEN THE
@@ -1015,6 +1032,8 @@ class SubCube(pyspeckit.Cube):
                 if verbose_level > 1 and ii == 0:
                     log.info("Using input guess")
                 gg = guesses
+
+            fitkwargs = self._unpack_fitkwargs(x, y, kwargs)
 
             if np.all(np.isfinite(gg)):
                 try:
