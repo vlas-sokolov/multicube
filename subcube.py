@@ -815,6 +815,16 @@ class SubCube(pyspeckit.Cube):
         except IndexError:
             return {key: val for key, val in argdict.iteritems()}
 
+    def _fiteach_args_to_3d(self):
+        """
+        Converts 1d fiteach_args to 3d.
+        """
+        shape_3d = ((len(self.fiteach_args[self.fiteach_args.keys()[0]]),)
+                    + self.cube[0].shape)
+        for key, val in self.fiteach_args.iteritems():
+            val_3d = np.ones(shape_3d) * np.array(val)[:, None, None]
+            self.fiteach_args[key] = val_3d.astype(type(val[0]))
+
     # Taken directly from pyspeckit.cubes.fiteach()!
     # TODO: this is suitable for my personal needs only. Do I
     #       really want this in the master branch? Probably not.
