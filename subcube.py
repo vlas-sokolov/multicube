@@ -962,7 +962,10 @@ class SubCube(pyspeckit.Cube):
                     log.warn("using data std() as error.")
                 sp.error[:] = sp.data[sp.data==sp.data].std()
             if (sp.error is not None or snrmap is not None) and signal_cut > 0:
-                max_sn = snrmap[y,x] or np.nanmax(sp.data / sp.error)
+                try:
+                    max_sn = snrmap[y,x]
+                except TypeError: # if snrmap is None
+                    max_sn = np.nanmax(sp.data / sp.error)
                 if max_sn < signal_cut:
                     if verbose_level > 1:
                         log.info("Skipped %4i,%4i (s/n=%0.2g)" % (x,y,max_sn))
