@@ -104,6 +104,7 @@ class SubCube(pyspeckit.Cube):
                              'maxpars'   : maxpars    }
 
         # TODO: why does 'fixed' break the gaussian fitter?
+        #       update as of 1.08.2016: this doesn't happen anymore
         #if self.fittype is 'gaussian':
         #    self.fiteach_args.pop('fixed')
  
