@@ -1110,36 +1110,36 @@ class SubCube(pyspeckit.Cube):
                 if verbose_level > 1:
                     log.info("Skipped %4i,%4i (s/n=%0.2g)" % (x,y,max_sn))
                 success = False
-                sp.specfit.modelpars = blank_value
-                sp.specfit.modelerrs = blank_value
+                sp.specfit.modelpars = np.ones_like(gg)*blank_value
+                sp.specfit.modelerrs = np.ones_like(gg)*blank_value
             except NanSnrAtPixel:
                 if verbose_level > 1:
                     log.info("Skipped %4i,%4i (s/n is nan; "
                              "max(data)=%0.2g, min(error)=%0.2g)" %
                              (x,y,np.nanmax(sp.data),np.nanmin(sp.error)))
                 success = False
-                sp.specfit.modelpars = blank_value
-                sp.specfit.modelerrs = blank_value
+                sp.specfit.modelpars = np.ones_like(gg)*blank_value
+                sp.specfit.modelerrs = np.ones_like(gg)*blank_value
             except NanGuessesException:
                 if verbose_level > 1:
                     log.info("NaN values in guess vector.")
                 success = False
-                sp.specfit.modelpars = blank_value
-                sp.specfit.modelerrs = blank_value
+                sp.specfit.modelpars = np.ones_like(gg)*blank_value
+                sp.specfit.modelerrs = np.ones_like(gg)*blank_value
             except AllFixedException:
                 if verbose_level > 1:
                     log.info("Zero degrees of freedom, "
                              "setting parcube to guesses.")
                 success = True
-                sp.specfit.modelpars = gg
-                sp.specfit.modelerrs = [0]*len(gg)
+                sp.specfit.modelpars = np.array(gg)
+                sp.specfit.modelerrs = np.zeros_like(gg)
             except Exception as ex:
                 log.exception("Fit number %i at %i,%i failed on error %s" % (ii,x,y, str(ex)))
                 log.exception("Guesses were: {0}".format(str(gg)))
                 log.exception("Fitkwargs were: {0}".format(str(fitkwargs)))
                 success = False
-                sp.specfit.modelpars = blank_value
-                sp.specfit.modelerrs = blank_value
+                sp.specfit.modelpars = np.ones_like(gg)*blank_value
+                sp.specfit.modelerrs = np.ones_like(gg)*blank_value
                 if isinstance(ex,KeyboardInterrupt):
                     raise ex
             finally:
