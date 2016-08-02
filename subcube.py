@@ -12,6 +12,16 @@ import itertools
 from astropy.extern.six import string_types
 
 
+# gotta catch 'em all!
+class AllFixedException(Exception):
+    """ Zero degrees of freedom. """
+    pass
+
+class NanGuessesException(Exception):
+    """ Guesses have NaN values."""
+    pass
+
+
 class SubCube(pyspeckit.Cube):
     """
     An extension of Cube, tinkered to be an instance of MultiCube, from which 
@@ -1074,28 +1084,39 @@ class SubCube(pyspeckit.Cube):
 
             fitkwargs = self._unpack_fitkwargs(x, y, kwargs)
 
-            if np.all(np.isfinite(gg)):
-                try:
-                    sp.specfit(guesses=gg, quiet=verbose_level<=3,
-                               verbose=verbose_level>3, **fitkwargs)
-                    self.parcube[:,y,x] = sp.specfit.modelpars
-                    self.errcube[:,y,x] = sp.specfit.modelerrs
-                    success = True
-                except Exception as ex:
-                    log.exception("Fit number %i at %i,%i failed on error %s" % (ii,x,y, str(ex)))
-                    log.exception("Guesses were: {0}".format(str(gg)))
-                    log.exception("Fitkwargs were: {0}".format(str(fitkwargs)))
-                    success = False
-                    if isinstance(ex,KeyboardInterrupt):
-                        raise ex
-
-                # keep this out of the 'try' statement
-                self.has_fit[y,x] = success
-            else:
-                self.has_fit[y,x] = False
+            try:
+                if np.any(~np.isfinite(gg)):
+                    raise NanGuessesException("the guesses have nan values")
+                if 'fixed' in fitkwargs:
+                    if np.all(fitkwargs['fixed']):
+                        raise AllFixedException("all the parameters are fixed")
+                sp.specfit(guesses=gg, quiet=verbose_level<=3,
+                           verbose=verbose_level>3, **fitkwargs)
+                self.parcube[:,y,x] = sp.specfit.modelpars
+                self.errcube[:,y,x] = sp.specfit.modelerrs
+                success = True
+            except NanGuessesException:
+                log.info("NaN values in guess vector.")
+                success = False
                 self.parcube[:,y,x] = blank_value
                 self.errcube[:,y,x] = blank_value
+            except AllFixedException:
+                log.info("Zero degrees of freedom, setting parcube to guesses.")
+                success = True
+                sp.specfit.modelpars = gg
+                sp.specfit.modelerrs = [0]*len(gg)
+                self.parcube[:,y,x] = sp.specfit.modelpars
+                self.errcube[:,y,x] = sp.specfit.modelerrs
+            except Exception as ex:
+                log.exception("Fit number %i at %i,%i failed on error %s" % (ii,x,y, str(ex)))
+                log.exception("Guesses were: {0}".format(str(gg)))
+                log.exception("Fitkwargs were: {0}".format(str(fitkwargs)))
+                success = False
+                if isinstance(ex,KeyboardInterrupt):
+                    raise ex
 
+            # keep this out of the 'try' statement
+            self.has_fit[y,x] = success
 
             if blank_value != 0:
                 self.parcube[self.parcube == 0] = blank_value
@@ -1109,7 +1130,6 @@ class SubCube(pyspeckit.Cube):
                     pct = 100 * (ii+1.0)/float(npix)
                     log.info("Finished fit %6i of %6i at (%4i,%4i)%s. Elapsed time is %0.1f seconds.  %%%01.f" %
                              (ii+1, npix, x, y, snmsg, time.time()-t0, pct))
-
             if sp.specfit.modelerrs is None:
                 log.exception("Fit number %i at %i,%i failed with no specific error." % (ii,x,y))
                 log.exception("Guesses were: {0}".format(str(gg)))
