@@ -12,6 +12,23 @@ import itertools
 from astropy.extern.six import string_types
 
 
+# gotta catch 'em all!
+class AllFixedException(Exception):
+    """ Zero degrees of freedom. """
+    pass
+
+class NanGuessesException(Exception):
+    """ Guesses have NaN values."""
+    pass
+
+class SnrCutException(Exception):
+    """ Pixel is below SNR threshold. """
+    pass
+
+class NanSnrAtPixel(Exception):
+    """ S/N at pixel has a NaN value. """
+    pass
+
 class SubCube(pyspeckit.Cube):
     """
     An extension of Cube, tinkered to be an instance of MultiCube, from which 
@@ -858,14 +875,20 @@ class SubCube(pyspeckit.Cube):
             self.fiteach_args[key] = val_3d.astype(type(val[0]))
 
     # Taken directly from pyspeckit.cubes.fiteach()!
-    # TODO: this is suitable for my personal needs only. Do I
-    #       really want this in the master branch? Probably not.
+    # TODO: I removed quite a few lines of code from this, so the
+    #       method is currently suitable for my personal needs only.
+    #       I should rename it before merging to master branch.
     # TODO: roadmap for the function and the branch:
     #       - allow cubes of minmax/fixed args to be passed here
     #       - rename it to multifit
     #       - merge to master
-    # New feature:
+    # New features:
     # * use_best_as_guess argument
+    # * support for custom fitkwargs for custom pixels
+    # * handling of special cases through custom exceptions
+    # * can accept custom snr maps
+    # * TODO minor: percentages for milticore>1 case
+    # * TODO minor: add progressbar if not verbose
     def fiteach(self, errmap=None, snrmap=None, guesses=(), verbose=True,
                 verbose_level=1, quiet=True, signal_cut=3, usemomentcube=None,
                 blank_value=0, use_neighbor_as_guess=False,
@@ -1024,17 +1047,6 @@ class SubCube(pyspeckit.Cube):
                     max_sn = snrmap[y,x]
                 except TypeError: # if snrmap is None
                     max_sn = np.nanmax(sp.data / sp.error)
-                if max_sn < signal_cut:
-                    if verbose_level > 1:
-                        log.info("Skipped %4i,%4i (s/n=%0.2g)" % (x,y,max_sn))
-                    return
-                elif np.isnan(max_sn):
-                    if verbose_level > 1:
-                        log.info("Skipped %4i,%4i (s/n is nan; max(data)=%0.2g, min(error)=%0.2g)" %
-                                 (x,y,np.nanmax(sp.data),np.nanmin(sp.error)))
-                    return
-                if verbose_level > 2:
-                    log.info("Fitting %4i,%4i (s/n=%0.2g)" % (x,y,max_sn))
             else:
                 max_sn = None
             sp.specfit.Registry = self.Registry # copy over fitter registry
@@ -1076,32 +1088,75 @@ class SubCube(pyspeckit.Cube):
 
             fitkwargs = self._unpack_fitkwargs(x, y, kwargs)
 
-            if np.all(np.isfinite(gg)):
-                try:
-                    sp.specfit(guesses=gg, quiet=verbose_level<=3,
-                               verbose=verbose_level>3, **fitkwargs)
-                    self.parcube[:,y,x] = sp.specfit.modelpars
-                    self.errcube[:,y,x] = sp.specfit.modelerrs
-                    success = True
-                except Exception as ex:
-                    log.exception("Fit number %i at %i,%i failed on error %s" % (ii,x,y, str(ex)))
+            try:
+                if np.any(~np.isfinite(gg)):
+                    raise NanGuessesException("the guesses have nan values")
+
+                if 'fixed' in fitkwargs:
+                    if np.all(fitkwargs['fixed']):
+                        raise AllFixedException("all the parameters are fixed")
+
+                if max_sn < signal_cut:
+                    raise SnrCutException("pixel is below snr cut")
+
+                elif np.isnan(max_sn):
+                    raise NanSnrAtPixel("s/n is nan")
+
+                if verbose_level > 2:
+                    log.info("Fitting %4i,%4i (s/n=%0.2g)" % (x,y,max_sn))
+
+                sp.specfit(guesses=gg, quiet=verbose_level<=3,
+                           verbose=verbose_level>3, **fitkwargs)
+                success = True
+            except SnrCutException:
+                if verbose_level > 1:
+                    log.info("Skipped %4i,%4i (s/n=%0.2g)" % (x,y,max_sn))
+                success = False
+                sp.specfit.modelpars = np.ones_like(gg)*blank_value
+                sp.specfit.modelerrs = np.ones_like(gg)*blank_value
+            except NanSnrAtPixel:
+                if verbose_level > 1:
+                    log.info("Skipped %4i,%4i (s/n is nan; "
+                             "max(data)=%0.2g, min(error)=%0.2g)" %
+                             (x,y,np.nanmax(sp.data),np.nanmin(sp.error)))
+                success = False
+                sp.specfit.modelpars = np.ones_like(gg)*blank_value
+                sp.specfit.modelerrs = np.ones_like(gg)*blank_value
+            except NanGuessesException:
+                if verbose_level > 1:
+                    log.info("NaN values in guess vector.")
+                success = False
+                sp.specfit.modelpars = np.ones_like(gg)*blank_value
+                sp.specfit.modelerrs = np.ones_like(gg)*blank_value
+            except AllFixedException:
+                if verbose_level > 1:
+                    log.info("Zero degrees of freedom, "
+                             "setting parcube to guesses.")
+                success = True
+                sp.specfit.modelpars = np.array(gg)
+                sp.specfit.modelerrs = np.zeros_like(gg)
+            except Exception as ex:
+                log.exception("Fit number %i at %i,%i failed on error %s" % (ii,x,y, str(ex)))
+                log.exception("Guesses were: {0}".format(str(gg)))
+                log.exception("Fitkwargs were: {0}".format(str(fitkwargs)))
+                success = False
+                sp.specfit.modelpars = np.ones_like(gg)*blank_value
+                sp.specfit.modelerrs = np.ones_like(gg)*blank_value
+                if isinstance(ex,KeyboardInterrupt):
+                    raise ex
+            finally:
+                if sp.specfit.modelerrs is None:
+                    log.exception("Fit number %i at %i,%i failed "
+                                  "with no specific error." % (ii,x,y))
                     log.exception("Guesses were: {0}".format(str(gg)))
                     log.exception("Fitkwargs were: {0}".format(str(fitkwargs)))
-                    success = False
-                    if isinstance(ex,KeyboardInterrupt):
-                        raise ex
+                    raise TypeError("The fit never completed; "
+                                    "something has gone wrong.")
 
-                # keep this out of the 'try' statement
-                self.has_fit[y,x] = success
-            else:
-                self.has_fit[y,x] = False
-                self.parcube[:,y,x] = blank_value
-                self.errcube[:,y,x] = blank_value
-
-
-            if blank_value != 0:
-                self.parcube[self.parcube == 0] = blank_value
-                self.errcube[self.parcube == 0] = blank_value
+            # keep this out of the 'try' statement
+            self.has_fit[y,x] = success
+            self.parcube[:,y,x] = sp.specfit.modelpars
+            self.errcube[:,y,x] = sp.specfit.modelerrs
 
             self._counter += 1
             if verbose:
@@ -1109,14 +1164,9 @@ class SubCube(pyspeckit.Cube):
                     snmsg = " s/n=%5.1f" % (max_sn) if max_sn is not None else ""
                     npix = len(valid_pixels)
                     pct = 100 * (ii+1.0)/float(npix)
-                    log.info("Finished fit %6i of %6i at (%4i,%4i)%s. Elapsed time is %0.1f seconds.  %%%01.f" %
+                    log.info("Finished fit %6i of %6i at (%4i,%4i)%s. "
+                             "Elapsed time is %0.1f seconds.  %%%01.f" %
                              (ii+1, npix, x, y, snmsg, time.time()-t0, pct))
-
-            if sp.specfit.modelerrs is None:
-                log.exception("Fit number %i at %i,%i failed with no specific error." % (ii,x,y))
-                log.exception("Guesses were: {0}".format(str(gg)))
-                log.exception("Fitkwargs were: {0}".format(str(fitkwargs)))
-                raise TypeError("The fit never completed; something has gone wrong.")
 
             return ((x,y), sp.specfit.modelpars, sp.specfit.modelerrs)
 
