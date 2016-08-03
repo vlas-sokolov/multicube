@@ -501,7 +501,7 @@ class SubCube(pyspeckit.Cube):
         except MemoryError:
             log.warn("Not enough memory to compute the minimal"
                      " residuals, will iterate over XY pairs.")
-            best_map = np.empty_like(self.cube[0])
+            best_map = np.empty_like(self.cube[0], dtype=int)
             rmsmin_map = np.empty_like(self.cube[0])
             with ProgressBar(np.prod(best_map.shape)) as bar:
                 for (y,x) in np.ndindex(best_map.shape):
