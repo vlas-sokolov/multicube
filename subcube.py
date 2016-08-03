@@ -361,7 +361,7 @@ class SubCube(pyspeckit.Cube):
         else:
             self.model_grid = model_grid
 
-    def best_guess(self, model_grid=None, sn_cut=None,
+    def best_guess(self, model_grid=None, sn_cut=None, pbar_inc=1000,
                    memory_limit=None, from_file=None, **kwargs):
         """
         For a grid of initial guesses, determine the optimal one based 
@@ -377,6 +377,11 @@ class SubCube(pyspeckit.Cube):
 
         sn_cut : float; do not consider model selection for pixels
                  below this signal-to-noise ratio cutoff.
+
+        pbar_inc : int; Number of steps in which the progress bar is
+                   updated. The default should be sensible for modern
+                   machines. Prevents the progress bar from consiming
+                   too much computational power.
 
         memory_limit : float; How many gigabytes of RAM could be used for
                        broadcasting. If estimated usage goes over this
@@ -465,12 +470,15 @@ class SubCube(pyspeckit.Cube):
                         if sn_cut:
                             if not snr_mask[y,x]:
                                 best_map[y,x],rmsmin_map[y,x] = np.nan,np.nan
+                                bar.update(bar._current_value
+                                           + model_grid.shape[0])
                                 continue
                         resid_rms_xy = np.empty(shape=model_grid.shape[0])
                         for model_id in np.ndindex(model_grid.shape[0]):
                             resid_rms_xy[model_id] = (self.cube[:,y,x]
                                                 - model_grid[model_id]).std()
-                            bar.update()
+                            if not model_id[0] % pbar_inc:
+                                bar.update(bar._current_value+pbar_inc)
                         best_map[y,x] = np.argmin(resid_rms_xy)
                         rmsmin_map[y,x] = np.nanmin(resid_rms_xy)
         else:
