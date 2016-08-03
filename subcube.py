@@ -1087,9 +1087,19 @@ class SubCube(pyspeckit.Cube):
                             for iguess in ggrid]
                 gg = ggrid[np.argmin(resid)]
                 if np.argmin(resid):
-                    log.info("Selecting best guess at (%i,%i) from (%i,%i): %s" %
-                             (x,y,xpatch[np.argmin(resid)-1]+x,
-                                  ypatch[np.argmin(resid)-1]+y,str(gg)))
+                    gg_ind = np.where(np.all((self.parcube[:, ypatch+y,
+                                xpatch+x].T == np.array(gg)),axis=1))[0][0]
+                    x_old = xpatch[gg_ind]+x
+                    y_old = ypatch[gg_ind]+y
+                    log.info("Selecting best guess at (%i,%i) from "
+                             "(%i,%i): %s" % (x,y,x_old,y_old,str(gg)))
+                    # copy parlimits as well as the guess for consistency
+                    lims_old = self._unpack_fitkwargs(x_old, y_old, kwargs)
+                    try:
+                        for key in self.fiteach_args.keys():
+                            kwargs[key][:,y,x] = lims_old[key]
+                    except IndexError:
+                        kwargs[key] = lims_old[key]
                 else:
                     log.info("Selecting best guess from input guess.")
             elif use_neighbor_as_guess and np.any(local_fits):
