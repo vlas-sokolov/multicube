@@ -495,8 +495,20 @@ class SubCube(pyspeckit.Cube):
             zlen = residual_rms.shape[0]
             residual_rms[~self.get_slice_mask(snr_mask, zlen)] = np.inf
 
-        best_map   = np.argmin(residual_rms, axis=0)
-        rmsmin_map = residual_rms.min(axis=0)
+        try:
+            best_map   = np.argmin(residual_rms, axis=0)
+            rmsmin_map = residual_rms.min(axis=0)
+        except MemoryError:
+            log.warn("Not enough memory to compute the minimal"
+                     " residuals, will iterate over XY pairs.")
+            best_map = np.empty_like(self.cube[0])
+            rmsmin_map = np.empty_like(self.cube[0])
+            with ProgressBar(np.prod(best_map.shape)) as bar:
+                for (y,x) in np.ndindex(best_map.shape):
+                    best_map[y,x] = np.argmin(residual_rms[:,y,x])
+                    rmsmin_map[y,x] = residual_rms[:,y,x].min()
+                    bar.update()
+
         self._best_map    = best_map
         self._best_rmsmap = rmsmin_map
         self.best_guesses = np.rollaxis(self.guess_grid[best_map],-1)
