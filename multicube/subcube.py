@@ -130,7 +130,7 @@ class SubCube(pyspeckit.Cube):
 
         self.fiteach_arg_grid = {key: np.repeat([val], guess_grid.shape[0],
                                  axis=0) for key, val in
-                                 self.fiteach_args.iteritems()}
+                                 self.fiteach_args.items()}
 
         self.guess_grid = guess_grid
 
@@ -174,7 +174,7 @@ class SubCube(pyspeckit.Cube):
                        'minpars'   : minpars,
                        'maxpars'   : maxpars    }
 
-        for key, val in expand_dict.iteritems():
+        for key, val in expand_dict.items():
             expander = np.repeat([expand_dict[key]],
                                  np.prod(np.atleast_1d(finesse)),
                                  axis=0)
@@ -880,10 +880,10 @@ class SubCube(pyspeckit.Cube):
         # NOTE: why lists? well pyspeckit doesn't always like arrays
         try:
             return {key: list(val[:,y,x]) if hasattr(argdict[key],'shape')
-                         else val for key, val in argdict.iteritems()}
+                         else val for key, val in argdict.items()}
         except IndexError:
             return {key: list(val) if type(val) is np.ndarray else val
-                    for key, val in argdict.iteritems()}
+                    for key, val in argdict.items()}
 
     def _fiteach_args_to_3d(self):
         """
@@ -891,7 +891,7 @@ class SubCube(pyspeckit.Cube):
         """
         shape_3d = ((len(self.fiteach_args[self.fiteach_args.keys()[0]]),)
                     + self.cube[0].shape)
-        for key, val in self.fiteach_args.iteritems():
+        for key, val in self.fiteach_args.items():
             val_3d = np.ones(shape_3d) * np.array(val)[:, None, None]
             self.fiteach_args[key] = val_3d.astype(type(val[0]))
 
