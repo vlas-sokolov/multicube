@@ -31,8 +31,8 @@ class NanSnrAtPixel(Exception):
 
 class SubCube(pyspeckit.Cube):
     """
-    An extension of Cube, tinkered to be an instance of MultiCube, from which 
-    it receives references to instances of pyspeckit.Cube that do not depend 
+    An extension of Cube, tinkered to be an instance of MultiCube, from which
+    it receives references to instances of pyspeckit.Cube that do not depend
     on a spectral model chosen (so that parent MultiCube doesn't weigh so much)
 
     Is designed to have methods that operate within a single spectral model.
@@ -43,11 +43,11 @@ class SubCube(pyspeckit.Cube):
         # because that UnitConversionError pops up way too often
         if self.xarr.velocity_convention is None:
             self.xarr.velocity_convention = 'radio'
-        
-        # so I either define some things as `None` 
+
+        # so I either define some things as `None`
         # or I'll have to call hasattr or them...
         # TODO: which is a more Pythonic approach?
-        # A: probably the hasattr method, see here:  
+        # A: probably the hasattr method, see here:
         # http://programmers.stackexchange.com/questions/
         # 254576/is-it-a-good-practice-to-declare-instance
         # -variables-as-none-in-a-class-in-python
@@ -66,7 +66,7 @@ class SubCube(pyspeckit.Cube):
             self.specfit.fitter = allowed_fitters[fit_type]
         except KeyError:
             raise ValueError('Unsupported fit type: %s\n'
-                             'Choose one from %s' 
+                             'Choose one from %s'
                              % (fit_type, allowed_fitters.keys()))
         log.info("Selected %s model" % fit_type)
         self.specfit.fittype = fit_type
@@ -75,7 +75,7 @@ class SubCube(pyspeckit.Cube):
     def make_guess_grid(self, minpars, maxpars, finesse, fixed=None,
                         limitedmin=None, limitedmax=None, **kwargs):
         """
-        Given parameter ranges and a finesse parameter, generate a grid of 
+        Given parameter ranges and a finesse parameter, generate a grid of
         guesses in a parameter space to be iterated upon in self.best_guess
         Maybe if parlimits arg is None we can look into parinfo?
 
@@ -85,8 +85,8 @@ class SubCube(pyspeckit.Cube):
 
         maxpars : an iterable containing maximal parameter values
 
-        finesse : an integer or 1xNpars list/array setting the size 
-                  of cells between minimal and maximal values in 
+        finesse : an integer or 1xNpars list/array setting the size
+                  of cells between minimal and maximal values in
                   the resulting guess grid
 
         fixed : an iterable of booleans setting whether or not to fix the
@@ -124,7 +124,7 @@ class SubCube(pyspeckit.Cube):
         #       update as of 1.08.2016: this doesn't happen anymore
         #if self.fittype is 'gaussian':
         #    self.fiteach_args.pop('fixed')
- 
+
         guess_grid = self._grid_parspace(minpars, maxpars, finesse, **kwargs)
         guess_grid = self._remove_close_peaks(guess_grid, **kwargs)
 
@@ -220,10 +220,11 @@ class SubCube(pyspeckit.Cube):
         par_space = []
         for i_len, i_min, i_max in zip(finesse+clip_edges*2, minpars, maxpars):
             par_slice_1d = (np.linspace(i_min, i_max, i_len) if not clip_edges
-                            else np.linspace(i_min, i_max, i_len)[1:][:-1]    )
+                            else np.linspace(i_min, i_max, i_len)[1:][:-1]
+                           )
             par_space.append(par_slice_1d)
 
-        nguesses = np.prod(map(len,par_space))
+        nguesses = np.prod(list(map(len,par_space)))
 
         return np.array(np.meshgrid(*par_space)).reshape(npars, nguesses).T
 
@@ -303,14 +304,14 @@ class SubCube(pyspeckit.Cube):
         Parameters
         ----------
         guess_grid : numpy.array
-                     A grid of input parameters. 
+                     A grid of input parameters.
                      Can be one of the following:
                      1) An (M,)-shaped 1d array of model parameters
                         (see pyspeckit docs for details)
-                     2) An (N, M) array to compute N models 
+                     2) An (N, M) array to compute N models
                         for M sets of parameters
                      3) A guess cube of (Y, X, M) size
-                     4) An (N, Y, X, M)-shaped array, to 
+                     4) An (N, Y, X, M)-shaped array, to
                         iterate over cubes of guesses.
                      If not set, SubCube.guess_grid is used.
 
@@ -364,7 +365,7 @@ class SubCube(pyspeckit.Cube):
     def best_guess(self, model_grid=None, sn_cut=None, pbar_inc=1000,
                    memory_limit=None, from_file=None, **kwargs):
         """
-        For a grid of initial guesses, determine the optimal one based 
+        For a grid of initial guesses, determine the optimal one based
         on the preliminary residual of the specified spectral model.
 
         Parameters
@@ -553,15 +554,15 @@ class SubCube(pyspeckit.Cube):
         mask3d = np.repeat([mask2d], zlen, axis=0)
         return mask3d
 
-    def get_snr_map(self, signal=None, noise=None, unit='km/s', 
+    def get_snr_map(self, signal=None, noise=None, unit='km/s',
                     signal_mask=None, noise_mask=None          ):
         """
         Calculates S/N ratio for the cube. If no information is given on where
         to look for signal and noise channels, a (more-or-less reasonable) rule
-        of thirds is used: the outer thirds of the channel range are used to 
-        get the root mean square of the noise, and the max value in the inner 
+        of thirds is used: the outer thirds of the channel range are used to
+        get the root mean square of the noise, and the max value in the inner
         third is assumed to be the signal strength.
-        
+
         Parameters
         ----------
         signal : 2xN numpy.array, where N is the total number of signal blocks.
@@ -645,7 +646,7 @@ class SubCube(pyspeckit.Cube):
                 index_low  = self.xarr.x_to_pix(unit_low)
                 index_high = self.xarr.x_to_pix(unit_high)
                 self.xarr.convert_to_unit(unit_bkp)
-            else: 
+            else:
                 try:
                     index_low, index_high = (int(low.value ),
                                              int(high.value))
@@ -723,7 +724,7 @@ class SubCube(pyspeckit.Cube):
         """
         Compute chi^2 statistics for an X^2 distribution.
         This is essentially a chi^2 test for normality being
-        computed on residual from the fit. I'll rewrite it 
+        computed on residual from the fit. I'll rewrite it
         into a chi^2 goodness of fit test when I'll get around
         to it.
 
@@ -740,10 +741,10 @@ class SubCube(pyspeckit.Cube):
 
         # TODO: for Pearson's chisq test it would be
         # dof = self.xarr.size - self.specfit.fitter.npars - 1
-        
+
         # NOTE: likelihood function should asymptotically approach
         #       chi^2 distribution too! Given that the whole point
-        #       of calculating chi^2 is to use it for model 
+        #       of calculating chi^2 is to use it for model
         #       selection I should probably switch to it.
 
         # TODO: derive an expression for this "Astronomer's X^2" dof.
@@ -769,13 +770,13 @@ class SubCube(pyspeckit.Cube):
 
         return prob_chisq, dof
 
-    def mark_bad_fits(self, ax = None, mask = None, 
+    def mark_bad_fits(self, ax = None, mask = None,
                       cut = 1e-20, method = 'cross', **kwargs):
         """
-        Given an active axis used by Cube.mapplot, overplot 
+        Given an active axis used by Cube.mapplot, overplot
         pixels with bad fits with an overlay.
 
-        Can pass along a mask of bad pixels; if none is given 
+        Can pass along a mask of bad pixels; if none is given
         the method tries to get its own guess from:
         self.prob_chisq < cut
 
@@ -819,8 +820,8 @@ class SubCube(pyspeckit.Cube):
         # TODO: if ax is None take it from self.mapplot.axis
         x, y = xy
         if method is 'box':
-            ax.plot([x-.5,x-.5,x+.5,x+.5,x-.5], 
-                    [y-.5,y+.5,y+.5,y-.5,y-.5], 
+            ax.plot([x-.5,x-.5,x+.5,x+.5,x-.5],
+                    [y-.5,y+.5,y+.5,y-.5,y-.5],
                     **kwargs)
         elif method is 'cross':
             ax.plot([x-.5,x+.5], [y-.5,y+.5], **kwargs)
@@ -844,8 +845,8 @@ class SubCube(pyspeckit.Cube):
         # TODO: merge _doodle_box with _doodle_xy
         x0, y0 = (np.array(xy1)+np.array(xy2))/2.
         dx, dy = np.abs((np.array(xy1)-np.array(xy2))/2.)
-        ax.plot([x0-dx-.5,x0-dx-.5,x0+dx+.5,x0+dx+.5,x0-dx-.5], 
-                [y0-dy-.5,y0+dy+.5,y0+dy+.5,y0-dy-.5,y0-dy-.5], 
+        ax.plot([x0-dx-.5,x0-dx-.5,x0+dx+.5,x0+dx+.5,x0-dx-.5],
+                [y0-dy-.5,y0+dy+.5,y0+dy+.5,y0-dy-.5,y0-dy-.5],
                 **kwargs)
 
     def get_likelihood(self, sigma = None):
@@ -1269,7 +1270,7 @@ class SubCubeStack(SubCube, pyspeckit.CubeStack):
         super(SubCubeStack, self).__init__(*args)
 
 
-# taken directly from pyspeckit.cubes, 
+# taken directly from pyspeckit.cubes,
 # I can't seem to import it for some reason
 def get_neighbors(x, y, shape):
     """
