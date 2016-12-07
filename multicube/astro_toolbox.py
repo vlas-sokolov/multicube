@@ -85,6 +85,20 @@ def get_ncores():
 
     return ncores
 
+def in_ipynb():
+    """
+    Taken from Adam Ginsburg's SO answer here:
+    http://stackoverflow.com/a/24937408/4118756
+    """
+    try:
+        cfg = get_ipython().config
+        if cfg['IPKernelApp']['parent_appname'] == 'ipython-notebook':
+            return True
+        else:
+            return False
+    except NameError:
+        return False
+
 def tinker_ring_parspace(parseed, xy_shape, parindices=[], paramps=[]):
     """
     An oscilating radial structure is intruduced to selected parameters.
