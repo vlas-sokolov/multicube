@@ -1,8 +1,17 @@
 # multicube
-A wrapper for [pyspeckit](https://github.com/pyspeckit/pyspeckit), designed for extended flexibility with 
+A wrapper for [pyspeckit](https://github.com/pyspeckit/pyspeckit), designed for extended flexibility with fitting spectral cubes. Featuring:
 
-* multiple input guesses
+* better initial guess selection
+* pixel-specific guesses
 * model selection *(not implemented)*
 * multiple component fits
 
-in spectral cubes. Check out this [notebook](notebooks/example.ipynb) for a demo!
+Check out this [notebook](notebooks/example.ipynb) for a demo!
+
+You can also clone and install `multicube` locally:
+
+```bash
+git clone https://github.com/vlas-sokolov/multicube.git
+cd multicube
+pip install .
+```
