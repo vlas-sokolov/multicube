@@ -6,10 +6,9 @@ A working example script:
 """
 import numpy as np
 import matplotlib.pylab as plt
-import pyspeckit
-from subcube import SubCube
-from astro_toolbox import make_test_cube
-from astro_toolbox import get_ncores
+from multicube.subcube import SubCube
+from multicube.astro_toolbox import make_test_cube
+from multiprocessing import cpu_count
 
 # generating a dummy FITS file
 make_test_cube((300,10,10), outfile='foo.fits', sigma=(10,5))
@@ -69,7 +68,7 @@ sc.best_guess()
 
 sc.fiteach(fittype   = sc.fittype,
            guesses   = sc.best_guesses,
-           multicore = 1,#get_ncores(),
+           multicore = cpu_count()-1,
            errmap    = sc._rms_map,
            **sc.best_fitargs)
 
