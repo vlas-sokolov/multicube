@@ -436,6 +436,9 @@ class SubCube(pyspeckit.Cube):
             memgb = memory_limit or memgb
             mem = int(memgb) * 2**30
 
+        if sn_cut:
+            snr_mask = self.snr_map > sn_cut
+
         # allow for 50% computational overhead
         threshold = self.cube.nbytes*model_grid.shape[0]*2
         if mem < threshold:
@@ -447,49 +450,64 @@ class SubCube(pyspeckit.Cube):
                 if type(model_grid) is not np.ndarray: # assume memmap type
                     raise MemoryError("This will take ages, skipping to "
                                       "the no-broadcasting scenario.")
-                residual_rms = np.empty(shape=((model_grid.shape[0],)
-                                               + self.cube.shape[1:]))
+                # NOTE: this below is a monument to how things should *not*
+                #       be done. Seriously, trying to broadcast 1.5M models
+                #       to a 400x200 map can result in 700GB of RAM needed!
+                #residual_rms = np.empty(shape=((model_grid.shape[0],)
+                #                               + self.cube.shape[1:]))
+                best_map = np.empty(shape=(self.cube.shape[1:]))
+                rmsmin_map = np.empty(shape=(self.cube.shape[1:]))
                 with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
-                    for (y,x) in np.ndindex(self.cube.shape[1:]):
-                        residual_rms[:,y,x] = (self.cube[None,:,y,x]
-                                               - model_grid).std(axis=1)
+                    for (y, x) in np.ndindex(self.cube.shape[1:]):
+                        if sn_cut:
+                            if not snr_mask[y, x]:
+                                best_map[y, x], rmsmin_map[y,
+                                                           x] = np.nan, np.nan
+                                bar.update()
+                                continue
+                        resid_rms_xy = (np.nanstd(
+                            model_grid - self.cube[None, :, y, x], axis=1))
+                        best_map[y, x] = np.argmin(resid_rms_xy)
+                        rmsmin_map[y, x] = np.nanmin(resid_rms_xy)
                         bar.update()
-            except MemoryError: # catching memory errors could be really bad!
+            except MemoryError:  # catching memory errors could be really bad!
                 log.warn("Not enough memory to broadcast model grid to the "
                          "XY grid. This is bad for a number of reasons, the "
                          "foremost of which: the running time just went "
                          "through the roof. Leave it overnight maybe?")
                 best_map = np.empty(shape=(self.cube.shape[1:]))
                 rmsmin_map = np.empty(shape=(self.cube.shape[1:]))
-                if sn_cut:
-                    snr_mask = self.snr_map > sn_cut
                 # TODO: this takes ages! refactor this through hdf5
                 # "chunks" of acceptable size, and then broadcast them!
-                with ProgressBar(np.prod((model_grid.shape[0],)
-                                         + self.cube.shape[1:])) as bar:
-                    for (y,x) in np.ndindex(self.cube.shape[1:]):
+                with ProgressBar(
+                        np.prod((model_grid.shape[0], ) + self.cube.shape[
+                            1:])) as bar:
+                    for (y, x) in np.ndindex(self.cube.shape[1:]):
                         if sn_cut:
-                            if not snr_mask[y,x]:
-                                best_map[y,x],rmsmin_map[y,x] = np.nan,np.nan
-                                bar.update(bar._current_value
-                                           + model_grid.shape[0])
+                            if not snr_mask[y, x]:
+                                best_map[y, x], rmsmin_map[y,
+                                                           x] = np.nan, np.nan
+                                bar.update(bar._current_value +
+                                           model_grid.shape[0])
                                 continue
                         resid_rms_xy = np.empty(shape=model_grid.shape[0])
                         for model_id in np.ndindex(model_grid.shape[0]):
-                            resid_rms_xy[model_id] = (self.cube[:,y,x]
-                                                - model_grid[model_id]).std()
+                            resid_rms_xy[model_id] = (
+                                self.cube[:, y, x] - model_grid[model_id]
+                            ).std()
                             if not model_id[0] % pbar_inc:
-                                bar.update(bar._current_value+pbar_inc)
-                        best_map[y,x] = np.argmin(resid_rms_xy)
-                        rmsmin_map[y,x] = np.nanmin(resid_rms_xy)
+                                bar.update(bar._current_value + pbar_inc)
+                        best_map[y, x] = np.argmin(resid_rms_xy)
+                        rmsmin_map[y, x] = np.nanmin(resid_rms_xy)
         else:
             # NOTE: broadcasting below is a much faster way to compute
             #       cube - model residuals. But for big model sizes this
             #       will cause memory overflows.
             #       The code above tried to catch this before it happens
             #       and run things in a slower fashion.
-            residual_rms = (self.cube[None,:,:,:]
-                            - model_grid[:,:,None,None]).std(axis=1)
+            residual_rms = (
+                self.cube[None, :, :, :] - model_grid[:, :, None, None]).std(
+                    axis=1)
 
         if sn_cut:
             snr_mask = self.snr_map > sn_cut
@@ -497,7 +515,7 @@ class SubCube(pyspeckit.Cube):
             residual_rms[~self.get_slice_mask(snr_mask, zlen)] = np.inf
 
         try:
-            best_map   = np.argmin(residual_rms, axis=0)
+            best_map = np.argmin(residual_rms, axis=0)
             rmsmin_map = residual_rms.min(axis=0)
         except MemoryError:
             log.warn("Not enough memory to compute the minimal"
@@ -505,31 +523,34 @@ class SubCube(pyspeckit.Cube):
             best_map = np.empty_like(self.cube[0], dtype=int)
             rmsmin_map = np.empty_like(self.cube[0])
             with ProgressBar(np.prod(best_map.shape)) as bar:
-                for (y,x) in np.ndindex(best_map.shape):
-                    best_map[y,x] = np.argmin(residual_rms[:,y,x])
-                    rmsmin_map[y,x] = residual_rms[:,y,x].min()
+                for (y, x) in np.ndindex(best_map.shape):
+                    best_map[y, x] = np.argmin(residual_rms[:, y, x])
+                    rmsmin_map[y, x] = residual_rms[:, y, x].min()
                     bar.update()
+        except UnboundLocalError:
+            pass  # they're already defined
 
-        self._best_map    = best_map
+        best_map = best_map.astype(int)
+        self._best_map = best_map
         self._best_rmsmap = rmsmin_map
-        self.best_guesses = np.rollaxis(self.guess_grid[best_map],-1)
+        self.best_guesses = np.rollaxis(self.guess_grid[best_map], -1)
         self.best_fitargs = \
             {key: np.rollaxis(self.fiteach_arg_grid[key][best_map],-1)
                     for key in self.fiteach_arg_grid.keys()}
 
         from scipy.stats import mode
         model_mode = mode(best_map)
-        best_model_num = model_mode[0][0,0]
-        best_model_freq = model_mode[1][0,0]
-        best_model_frac = (float(best_model_freq)
-                           / np.prod(self.cube.shape[1:]))
+        best_model_num = model_mode[0][0, 0]
+        best_model_freq = model_mode[1][0, 0]
+        best_model_frac = (float(best_model_freq) /
+                           np.prod(self.cube.shape[1:]))
         if best_model_frac < .05:
             log.warn("Selected model is best only for less than %5 "
                      "of the cube, consider using the map of guesses.")
         self._best_model = best_model_num
-        self.best_overall  = self.guess_grid[best_model_num]
-        log.info("Overall best model: selected #%i %s" % (best_model_num,
-                 self.guess_grid[best_model_num].round(2)))
+        self.best_overall = self.guess_grid[best_model_num]
+        log.info("Overall best model: selected #%i %s" %
+                 (best_model_num, self.guess_grid[best_model_num].round(2)))
 
         try:
             best_snr = np.argmax(self.snr_map)
