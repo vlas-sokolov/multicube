@@ -256,7 +256,7 @@ class SubCube(pyspeckit.Cube):
 
         # TODO: expand to min/max filtering
         spacing, which = np.atleast_1d(spacing), np.atleast_1d(which)
-        npars = guess_grid.shape[1] / npeaks
+        npars = int(guess_grid.shape[1] / npeaks)
 
         # for every parameter space dimension to look into
         for dp, i in zip(spacing, which):
@@ -280,7 +280,7 @@ class SubCube(pyspeckit.Cube):
         else: # now we need to check the peak amplitude for each comp
             npeaks_old = self.specfit.fitter.npeaks
             self.specfit.fitter.npeaks = 1
-            npars = gg.shape[0] / npeaks_old
+            npars = int(gg.shape[0] / npeaks_old)
             gg_new = []
             tot_model = np.zeros_like(self.xarr.value)
             for i in range(npeaks_old):
