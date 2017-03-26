@@ -455,6 +455,12 @@ class SubCube(pyspeckit.Cube):
                 #       to a 400x200 map can result in 700GB of RAM needed!
                 #residual_rms = np.empty(shape=((model_grid.shape[0],)
                 #                               + self.cube.shape[1:]))
+                #with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
+                #    for (y,x) in np.ndindex(self.cube.shape[1:]):
+                #        residual_rms[:,y,x] = (self.cube[None,:,y,x]
+                #                               - model_grid).std(axis=1)
+                #        bar.update()
+
                 best_map = np.empty(shape=(self.cube.shape[1:]))
                 rmsmin_map = np.empty(shape=(self.cube.shape[1:]))
                 with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
@@ -508,32 +514,32 @@ class SubCube(pyspeckit.Cube):
             residual_rms = (
                 self.cube[None, :, :, :] - model_grid[:, :, None, None]).std(
                     axis=1)
+            if sn_cut:
+                zlen = residual_rms.shape[0]
+                residual_rms[~self.get_slice_mask(snr_mask, zlen)] = np.inf
 
-        if sn_cut:
-            snr_mask = self.snr_map > sn_cut
-            zlen = residual_rms.shape[0]
-            residual_rms[~self.get_slice_mask(snr_mask, zlen)] = np.inf
+            try:
+                best_map = np.argmin(residual_rms, axis=0)
+                rmsmin_map = residual_rms.min(axis=0)
+            except MemoryError:
+                log.warn("Not enough memory to compute the minimal"
+                         " residuals, will iterate over XY pairs.")
+                best_map = np.empty_like(self.cube[0], dtype=int)
+                rmsmin_map = np.empty_like(self.cube[0])
+                with ProgressBar(np.prod(best_map.shape)) as bar:
+                    for (y, x) in np.ndindex(best_map.shape):
+                        best_map[y, x] = np.argmin(residual_rms[:, y, x])
+                        rmsmin_map[y, x] = residual_rms[:, y, x].min()
+                        bar.update()
 
-        try:
-            best_map = np.argmin(residual_rms, axis=0)
-            rmsmin_map = residual_rms.min(axis=0)
-        except MemoryError:
-            log.warn("Not enough memory to compute the minimal"
-                     " residuals, will iterate over XY pairs.")
-            best_map = np.empty_like(self.cube[0], dtype=int)
-            rmsmin_map = np.empty_like(self.cube[0])
-            with ProgressBar(np.prod(best_map.shape)) as bar:
-                for (y, x) in np.ndindex(best_map.shape):
-                    best_map[y, x] = np.argmin(residual_rms[:, y, x])
-                    rmsmin_map[y, x] = residual_rms[:, y, x].min()
-                    bar.update()
-        except UnboundLocalError:
-            pass  # they're already defined
-
+        # indexing by nan values would cause an IndexError
+        best_map[np.isnan(best_map)] = 0
         best_map = best_map.astype(int)
         self._best_map = best_map
         self._best_rmsmap = rmsmin_map
         self.best_guesses = np.rollaxis(self.guess_grid[best_map], -1)
+        snrmask3d = np.repeat([snr_mask], self.best_guesses.shape[0], axis=0)
+        self.best_guesses[~snrmask3d] = np.nan
         self.best_fitargs = \
             {key: np.rollaxis(self.fiteach_arg_grid[key][best_map],-1)
                     for key in self.fiteach_arg_grid.keys()}
