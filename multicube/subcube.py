@@ -732,12 +732,12 @@ class SubCube(pyspeckit.Cube):
         self._signal_map = signal_map
         return signal_map
 
-    def get_chi_squared(self, sigma = None, refresh=False):
+    def get_chi_squared(self, sigma = None, refresh=False, **kwargs):
         """
         Computes a chi-squared map from modelcube / parinfo.
         """
         if self._modelcube is None or refresh:
-            self.get_modelcube()
+            self.get_modelcube(**kwargs)
 
         if sigma is None:
             sigma = self._rms_map
