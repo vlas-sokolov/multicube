@@ -976,7 +976,7 @@ class SubCube(pyspeckit.Cube):
         guesses: tuple or ndarray[naxis=3]
             Either a tuple/list of guesses with len(guesses) = npars or a cube
             of guesses with shape [npars, ny, nx].
-        errmap: ndarray[naxis=2]
+        errmap: ndarray[naxis=2] or ndarray[naxis=3]
             A map of rms of the noise to use for signal cutting.
         snrmap: ndarray[naxis=2]
             A map of signal-to-noise ratios to use. Overrides errmap.
@@ -1085,7 +1085,17 @@ class SubCube(pyspeckit.Cube):
                 sp.error = np.array(sp.error)
 
             elif errmap is not None:
-                sp.error = np.ones(sp.data.shape) * errmap[y,x]
+                if self.errorcube is not None:
+                    raise ValueError("Either the 'errmap' argument or"
+                                     " self.errorcube attribute should be"
+                                     " specified, but not both.")
+                if errmap.shape == self.cube.shape[1:]:
+                    sp.error = np.ones(sp.data.shape) * errmap[int(y),int(x)]
+                elif errmap.shape == self.cube.shape:
+                    sp.error = errmap[:, int(y), int(x)]
+            elif self.errorcube is not None:
+                sp.error = self.errorcube[:, int(y), int(x)]
+
             else:
                 if verbose_level > 1 and ii==0:
                     log.warn("using data std() as error.")
