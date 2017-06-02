@@ -553,7 +553,7 @@ class SubCube(pyspeckit.Cube):
         if best_model_frac < .05:
             log.warn("Selected model is best only for less than %5 "
                      "of the cube, consider using the map of guesses.")
-        self._best_model = best_model_num
+        self._best_model = int(best_model_num)
         self.best_overall = self.guess_grid[best_model_num]
         log.info("Overall best model: selected #%i %s" %
                  (best_model_num, self.guess_grid[best_model_num].round(2)))
