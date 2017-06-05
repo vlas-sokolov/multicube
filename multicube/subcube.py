@@ -546,14 +546,14 @@ class SubCube(pyspeckit.Cube):
 
         from scipy.stats import mode
         model_mode = mode(best_map)
-        best_model_num = model_mode[0][0, 0]
+        best_model_num = int(model_mode[0][0, 0])
         best_model_freq = model_mode[1][0, 0]
         best_model_frac = (float(best_model_freq) /
                            np.prod(self.cube.shape[1:]))
         if best_model_frac < .05:
             log.warn("Selected model is best only for less than %5 "
                      "of the cube, consider using the map of guesses.")
-        self._best_model = int(best_model_num)
+        self._best_model = best_model_num
         self.best_overall = self.guess_grid[best_model_num]
         log.info("Overall best model: selected #%i %s" %
                  (best_model_num, self.guess_grid[best_model_num].round(2)))
@@ -582,7 +582,7 @@ class SubCube(pyspeckit.Cube):
         return mask3d
 
     def get_snr_map(self, signal=None, noise=None, unit='km/s',
-                    signal_mask=None, noise_mask=None          ):
+                    signal_mask=None, noise_mask=None):
         """
         Calculates S/N ratio for the cube. If no information is given on where
         to look for signal and noise channels, a (more-or-less reasonable) rule
@@ -732,7 +732,7 @@ class SubCube(pyspeckit.Cube):
         self._signal_map = signal_map
         return signal_map
 
-    def get_chi_squared(self, sigma = None, refresh=False, **kwargs):
+    def get_chi_squared(self, sigma=None, refresh=False, **kwargs):
         """
         Computes a chi-squared map from modelcube / parinfo.
         """
@@ -742,7 +742,7 @@ class SubCube(pyspeckit.Cube):
         if sigma is None:
             sigma = self._rms_map
 
-        chisq = ((self.cube - self._modelcube)**2).sum(axis=0)/sigma**2
+        chisq = ((self.cube - self._modelcube)**2 / sigma**2).sum(axis=0)
 
         self.chi_squared = chisq
         return chisq
@@ -797,8 +797,8 @@ class SubCube(pyspeckit.Cube):
 
         return prob_chisq, dof
 
-    def mark_bad_fits(self, ax = None, mask = None,
-                      cut = 1e-20, method = 'cross', **kwargs):
+    def mark_bad_fits(self, ax=None, mask=None, cut=1e-20,
+                      method='cross', **kwargs):
         """
         Given an active axis used by Cube.mapplot, overplot
         pixels with bad fits with an overlay.
@@ -876,21 +876,22 @@ class SubCube(pyspeckit.Cube):
                 [y0-dy-.5,y0+dy+.5,y0+dy+.5,y0-dy-.5,y0-dy-.5],
                 **kwargs)
 
-    def get_likelihood(self, sigma = None):
+    def get_likelihood(self, sigma=None):
         """
         Computes log-likelihood map from chi-squared
         """
         # self-NOTE: need to deal with chi^2 first
         raise NotImplementedError
-    #    if sigma is None:
-    #        sigma = self._rms_map
 
-    #    # TODO: resolve extreme exponent values or risk overflowing
-    #    likelihood = (np.exp(-self.chi_squared/2)
-    #                  * (sigma*np.sqrt(2*np.pi))**(-self.xarr.size))
-    #    self.likelihood = np.log(likelihood)
+        #if sigma is None:
+        #    sigma = self._rms_map
 
-    #    return np.log(likelihood)
+        ## TODO: resolve extreme exponent values or risk overflowing
+        #likelihood = (np.exp(-self.chi_squared/2)
+        #              * (sigma*np.sqrt(2*np.pi))**(-self.xarr.size))
+        #self.likelihood = np.log(likelihood)
+
+        #return np.log(likelihood)
 
     def _unpack_fitkwargs(self, x, y, fiteachargs=None):
         """
