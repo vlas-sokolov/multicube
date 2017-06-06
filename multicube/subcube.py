@@ -1137,7 +1137,8 @@ class SubCube(pyspeckit.Cube):
                     try:
                         for key in self.fiteach_args.keys():
                             kwargs[key][:,y,x] = lims_old[key]
-                    except IndexError:
+                    # TypeError for lists, IndexError for ndarrays
+                    except (IndexError, TypeError):
                         kwargs[key] = lims_old[key]
                 else:
                     log.info("Selecting best guess from input guess.")
