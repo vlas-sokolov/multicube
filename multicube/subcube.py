@@ -438,6 +438,8 @@ class SubCube(pyspeckit.Cube):
 
         if sn_cut:
             snr_mask = self.snr_map > sn_cut
+        else:
+            snr_mask = np.ones_like(self.snr_map, dtype=bool)
 
         # allow for 50% computational overhead
         threshold = self.cube.nbytes*model_grid.shape[0]*2
