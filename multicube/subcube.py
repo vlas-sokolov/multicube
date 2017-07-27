@@ -294,7 +294,7 @@ class SubCube(pyspeckit.Cube):
             self.specfit.fitter.npeaks = npeaks_old
             return tot_model, gg_new
 
-    def generate_model(self, guess_grid=None, to_file=None, redo=True,
+    def generate_model(self, guess_grid=None, model_file=None, redo=True,
                        npeaks=None, **kwargs):
         """
         Generates a grid of spectral models matching the
@@ -315,17 +315,17 @@ class SubCube(pyspeckit.Cube):
                         iterate over cubes of guesses.
                      If not set, SubCube.guess_grid is used.
 
-        to_file : string; if not None then the models generated will
-                  be saved to an .npy file instead of class attribute
+        model_file : string; if not None then the models generated will
+                     be saved to an .npy file instead of class attribute
 
-        redo : boolean; if False and to_file filename is in place, the
+        redo : boolean; if False and model_file filename is in place, the
                model gird will not be generated anew
 
         Additional keyword arguments are passed to a filter function
         `SubCube.you_shall_not_pass()`
         """
 
-        if not redo and os.path.isfile(to_file):
+        if not redo and os.path.isfile(model_file):
             log.info("A file with generated models is "
                      "already in place. Skipping.")
             return
@@ -357,13 +357,14 @@ class SubCube(pyspeckit.Cube):
                     self.guess_grid[idx] = gg # TODO: why pass guess_grid then?
                 bar.update()
 
-        if to_file is not None:
-            np.save(to_file, model_grid)
+        if model_file is not None:
+            np.save(model_file, model_grid)
         else:
             self.model_grid = model_grid
 
     def best_guess(self, model_grid=None, sn_cut=None, pbar_inc=1000,
-                   memory_limit=None, from_file=None, **kwargs):
+                   memory_limit=None, model_file=None,
+                   np_load_kwargs={}, **kwargs):
         """
         For a grid of initial guesses, determine the optimal one based
         on the preliminary residual of the specified spectral model.
@@ -388,9 +389,12 @@ class SubCube(pyspeckit.Cube):
                        broadcasting. If estimated usage goes over this
                        number, best_guess switches to a slower method.
 
-        from_file : string; if not None then the models grid will be
-                    read from a file using np.load, which additional
-                    arguments, like mmap_mode, passed along to it
+        model_file : string; if not None then the models grid will be
+                     read from a file using np.load, which additional
+                     arguments, like mmap_mode, passed along to it
+
+        np_load_kwargs : extra keyword arguments to be passed along to
+                         np.load - see its docstring for more info
 
         Output
         ------
@@ -404,8 +408,8 @@ class SubCube(pyspeckit.Cube):
 
         """
         if model_grid is None:
-            if from_file is not None:
-                model_grid = np.load(from_file, **kwargs)
+            if model_file is not None:
+                model_grid = np.load(model_file, **np_load_kwargs)
                 self.model_grid = model_grid
             elif self.model_grid is None:
                 raise TypeError('sooo the model_grid is empty, '
@@ -439,7 +443,7 @@ class SubCube(pyspeckit.Cube):
         if sn_cut:
             snr_mask = self.snr_map > sn_cut
         else:
-            snr_mask = np.ones_like(self.snr_map, dtype=bool)
+            snr_mask = np.ones(shape=self.cube.shape[1:], dtype=bool)
 
         # allow for 50% computational overhead
         threshold = self.cube.nbytes*model_grid.shape[0]*2
