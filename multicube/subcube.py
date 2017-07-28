@@ -467,10 +467,13 @@ class SubCube(pyspeckit.Cube):
                 #                               - model_grid).std(axis=1)
                 #        bar.update()
 
-                best_map = np.empty(shape=(self.cube.shape[1:]))
-                rmsmin_map = np.empty(shape=(self.cube.shape[1:]))
+                best_map = np.full(self.cube.shape[1:], np.nan)
+                rmsmin_map = np.full(self.cube.shape[1:], np.nan)
                 with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
                     for (y, x) in np.ndindex(self.cube.shape[1:]):
+                        if not np.isfinite(self.cube[:, y, x]).any():
+                            bar.update()
+                            continue
                         if sn_cut:
                             if not snr_mask[y, x]:
                                 best_map[y, x], rmsmin_map[y,
@@ -487,14 +490,18 @@ class SubCube(pyspeckit.Cube):
                          "XY grid. This is bad for a number of reasons, the "
                          "foremost of which: the running time just went "
                          "through the roof. Leave it overnight maybe?")
-                best_map = np.empty(shape=(self.cube.shape[1:]))
-                rmsmin_map = np.empty(shape=(self.cube.shape[1:]))
+                best_map = np.full(self.cube.shape[1:], np.nan)
+                rmsmin_map = np.full(self.cube.shape[1:], np.nan)
                 # TODO: this takes ages! refactor this through hdf5
                 # "chunks" of acceptable size, and then broadcast them!
                 with ProgressBar(
                         np.prod((model_grid.shape[0], ) + self.cube.shape[
                             1:])) as bar:
                     for (y, x) in np.ndindex(self.cube.shape[1:]):
+                        if not np.isfinite(self.cube[:, y, x]).any():
+                            bar.update(bar._current_value +
+                                       model_grid.shape[0])
+                            continue
                         if sn_cut:
                             if not snr_mask[y, x]:
                                 best_map[y, x], rmsmin_map[y,
