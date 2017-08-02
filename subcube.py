@@ -169,7 +169,7 @@ class SubCube(pyspeckit.Cube):
                             else np.linspace(i_min, i_max, i_len)[1:][:-1]    )
             par_space.append(par_slice_1d)
 
-        nguesses = np.prod(map(len,par_space))
+        nguesses = np.prod(list(map(len,par_space)))
 
         return np.array(np.meshgrid(*par_space)).reshape(npars, nguesses).T
 
