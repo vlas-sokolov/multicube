@@ -256,7 +256,7 @@ class SubCube(pyspeckit.Cube):
 
         # TODO: expand to min/max filtering
         spacing, which = np.atleast_1d(spacing), np.atleast_1d(which)
-        npars = guess_grid.shape[1] / npeaks
+        npars = int(guess_grid.shape[1] / npeaks)
 
         # for every parameter space dimension to look into
         for dp, i in zip(spacing, which):
@@ -280,7 +280,7 @@ class SubCube(pyspeckit.Cube):
         else: # now we need to check the peak amplitude for each comp
             npeaks_old = self.specfit.fitter.npeaks
             self.specfit.fitter.npeaks = 1
-            npars = gg.shape[0] / npeaks_old
+            npars = int(gg.shape[0] / npeaks_old)
             gg_new = []
             tot_model = np.zeros_like(self.xarr.value)
             for i in range(npeaks_old):
@@ -294,7 +294,7 @@ class SubCube(pyspeckit.Cube):
             self.specfit.fitter.npeaks = npeaks_old
             return tot_model, gg_new
 
-    def generate_model(self, guess_grid=None, to_file=None, redo=True,
+    def generate_model(self, guess_grid=None, model_file=None, redo=True,
                        npeaks=None, **kwargs):
         """
         Generates a grid of spectral models matching the
@@ -315,17 +315,17 @@ class SubCube(pyspeckit.Cube):
                         iterate over cubes of guesses.
                      If not set, SubCube.guess_grid is used.
 
-        to_file : string; if not None then the models generated will
-                  be saved to an .npy file instead of class attribute
+        model_file : string; if not None then the models generated will
+                     be saved to an .npy file instead of class attribute
 
-        redo : boolean; if False and to_file filename is in place, the
+        redo : boolean; if False and model_file filename is in place, the
                model gird will not be generated anew
 
         Additional keyword arguments are passed to a filter function
         `SubCube.you_shall_not_pass()`
         """
 
-        if not redo and os.path.isfile(to_file):
+        if not redo and os.path.isfile(model_file):
             log.info("A file with generated models is "
                      "already in place. Skipping.")
             return
@@ -357,13 +357,14 @@ class SubCube(pyspeckit.Cube):
                     self.guess_grid[idx] = gg # TODO: why pass guess_grid then?
                 bar.update()
 
-        if to_file is not None:
-            np.save(to_file, model_grid)
+        if model_file is not None:
+            np.save(model_file, model_grid)
         else:
             self.model_grid = model_grid
 
     def best_guess(self, model_grid=None, sn_cut=None, pbar_inc=1000,
-                   memory_limit=None, from_file=None, **kwargs):
+                   memory_limit=None, model_file=None,
+                   np_load_kwargs={}, **kwargs):
         """
         For a grid of initial guesses, determine the optimal one based
         on the preliminary residual of the specified spectral model.
@@ -388,9 +389,12 @@ class SubCube(pyspeckit.Cube):
                        broadcasting. If estimated usage goes over this
                        number, best_guess switches to a slower method.
 
-        from_file : string; if not None then the models grid will be
-                    read from a file using np.load, which additional
-                    arguments, like mmap_mode, passed along to it
+        model_file : string; if not None then the models grid will be
+                     read from a file using np.load, which additional
+                     arguments, like mmap_mode, passed along to it
+
+        np_load_kwargs : extra keyword arguments to be passed along to
+                         np.load - see its docstring for more info
 
         Output
         ------
@@ -404,8 +408,8 @@ class SubCube(pyspeckit.Cube):
 
         """
         if model_grid is None:
-            if from_file is not None:
-                model_grid = np.load(from_file, **kwargs)
+            if model_file is not None:
+                model_grid = np.load(model_file, **np_load_kwargs)
                 self.model_grid = model_grid
             elif self.model_grid is None:
                 raise TypeError('sooo the model_grid is empty, '
@@ -436,6 +440,11 @@ class SubCube(pyspeckit.Cube):
             memgb = memory_limit or memgb
             mem = int(memgb) * 2**30
 
+        if sn_cut:
+            snr_mask = self.snr_map > sn_cut
+        else:
+            snr_mask = np.ones(shape=self.cube.shape[1:], dtype=bool)
+
         # allow for 50% computational overhead
         threshold = self.cube.nbytes*model_grid.shape[0]*2
         if mem < threshold:
@@ -447,89 +456,120 @@ class SubCube(pyspeckit.Cube):
                 if type(model_grid) is not np.ndarray: # assume memmap type
                     raise MemoryError("This will take ages, skipping to "
                                       "the no-broadcasting scenario.")
-                residual_rms = np.empty(shape=((model_grid.shape[0],)
-                                               + self.cube.shape[1:]))
+                # NOTE: this below is a monument to how things should *not*
+                #       be done. Seriously, trying to broadcast 1.5M models
+                #       to a 400x200 map can result in 700GB of RAM needed!
+                #residual_rms = np.empty(shape=((model_grid.shape[0],)
+                #                               + self.cube.shape[1:]))
+                #with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
+                #    for (y,x) in np.ndindex(self.cube.shape[1:]):
+                #        residual_rms[:,y,x] = (self.cube[None,:,y,x]
+                #                               - model_grid).std(axis=1)
+                #        bar.update()
+
+                best_map = np.full(self.cube.shape[1:], np.nan)
+                rmsmin_map = np.full(self.cube.shape[1:], np.nan)
                 with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
-                    for (y,x) in np.ndindex(self.cube.shape[1:]):
-                        residual_rms[:,y,x] = (self.cube[None,:,y,x]
-                                               - model_grid).std(axis=1)
+                    for (y, x) in np.ndindex(self.cube.shape[1:]):
+                        if not np.isfinite(self.cube[:, y, x]).any():
+                            bar.update()
+                            continue
+                        if sn_cut:
+                            if not snr_mask[y, x]:
+                                best_map[y, x], rmsmin_map[y,
+                                                           x] = np.nan, np.nan
+                                bar.update()
+                                continue
+                        resid_rms_xy = (np.nanstd(
+                            model_grid - self.cube[None, :, y, x], axis=1))
+                        best_map[y, x] = np.argmin(resid_rms_xy)
+                        rmsmin_map[y, x] = np.nanmin(resid_rms_xy)
                         bar.update()
-            except MemoryError: # catching memory errors could be really bad!
+            except MemoryError:  # catching memory errors could be really bad!
                 log.warn("Not enough memory to broadcast model grid to the "
                          "XY grid. This is bad for a number of reasons, the "
                          "foremost of which: the running time just went "
                          "through the roof. Leave it overnight maybe?")
-                best_map = np.empty(shape=(self.cube.shape[1:]))
-                rmsmin_map = np.empty(shape=(self.cube.shape[1:]))
-                if sn_cut:
-                    snr_mask = self.snr_map > sn_cut
+                best_map = np.full(self.cube.shape[1:], np.nan)
+                rmsmin_map = np.full(self.cube.shape[1:], np.nan)
                 # TODO: this takes ages! refactor this through hdf5
                 # "chunks" of acceptable size, and then broadcast them!
-                with ProgressBar(np.prod((model_grid.shape[0],)
-                                         + self.cube.shape[1:])) as bar:
-                    for (y,x) in np.ndindex(self.cube.shape[1:]):
+                with ProgressBar(
+                        np.prod((model_grid.shape[0], ) + self.cube.shape[
+                            1:])) as bar:
+                    for (y, x) in np.ndindex(self.cube.shape[1:]):
+                        if not np.isfinite(self.cube[:, y, x]).any():
+                            bar.update(bar._current_value +
+                                       model_grid.shape[0])
+                            continue
                         if sn_cut:
-                            if not snr_mask[y,x]:
-                                best_map[y,x],rmsmin_map[y,x] = np.nan,np.nan
-                                bar.update(bar._current_value
-                                           + model_grid.shape[0])
+                            if not snr_mask[y, x]:
+                                best_map[y, x], rmsmin_map[y,
+                                                           x] = np.nan, np.nan
+                                bar.update(bar._current_value +
+                                           model_grid.shape[0])
                                 continue
                         resid_rms_xy = np.empty(shape=model_grid.shape[0])
                         for model_id in np.ndindex(model_grid.shape[0]):
-                            resid_rms_xy[model_id] = (self.cube[:,y,x]
-                                                - model_grid[model_id]).std()
+                            resid_rms_xy[model_id] = (
+                                self.cube[:, y, x] - model_grid[model_id]
+                            ).std()
                             if not model_id[0] % pbar_inc:
-                                bar.update(bar._current_value+pbar_inc)
-                        best_map[y,x] = np.argmin(resid_rms_xy)
-                        rmsmin_map[y,x] = np.nanmin(resid_rms_xy)
+                                bar.update(bar._current_value + pbar_inc)
+                        best_map[y, x] = np.argmin(resid_rms_xy)
+                        rmsmin_map[y, x] = np.nanmin(resid_rms_xy)
         else:
             # NOTE: broadcasting below is a much faster way to compute
             #       cube - model residuals. But for big model sizes this
             #       will cause memory overflows.
             #       The code above tried to catch this before it happens
             #       and run things in a slower fashion.
-            residual_rms = (self.cube[None,:,:,:]
-                            - model_grid[:,:,None,None]).std(axis=1)
+            residual_rms = (
+                self.cube[None, :, :, :] - model_grid[:, :, None, None]).std(
+                    axis=1)
+            if sn_cut:
+                zlen = residual_rms.shape[0]
+                residual_rms[~self.get_slice_mask(snr_mask, zlen)] = np.inf
 
-        if sn_cut:
-            snr_mask = self.snr_map > sn_cut
-            zlen = residual_rms.shape[0]
-            residual_rms[~self.get_slice_mask(snr_mask, zlen)] = np.inf
+            try:
+                best_map = np.argmin(residual_rms, axis=0)
+                rmsmin_map = residual_rms.min(axis=0)
+            except MemoryError:
+                log.warn("Not enough memory to compute the minimal"
+                         " residuals, will iterate over XY pairs.")
+                best_map = np.empty_like(self.cube[0], dtype=int)
+                rmsmin_map = np.empty_like(self.cube[0])
+                with ProgressBar(np.prod(best_map.shape)) as bar:
+                    for (y, x) in np.ndindex(best_map.shape):
+                        best_map[y, x] = np.argmin(residual_rms[:, y, x])
+                        rmsmin_map[y, x] = residual_rms[:, y, x].min()
+                        bar.update()
 
-        try:
-            best_map   = np.argmin(residual_rms, axis=0)
-            rmsmin_map = residual_rms.min(axis=0)
-        except MemoryError:
-            log.warn("Not enough memory to compute the minimal"
-                     " residuals, will iterate over XY pairs.")
-            best_map = np.empty_like(self.cube[0], dtype=int)
-            rmsmin_map = np.empty_like(self.cube[0])
-            with ProgressBar(np.prod(best_map.shape)) as bar:
-                for (y,x) in np.ndindex(best_map.shape):
-                    best_map[y,x] = np.argmin(residual_rms[:,y,x])
-                    rmsmin_map[y,x] = residual_rms[:,y,x].min()
-                    bar.update()
-
-        self._best_map    = best_map
+        # indexing by nan values would cause an IndexError
+        best_map[np.isnan(best_map)] = 0
+        best_map = best_map.astype(int)
+        self._best_map = best_map
         self._best_rmsmap = rmsmin_map
-        self.best_guesses = np.rollaxis(self.guess_grid[best_map],-1)
+        self.best_guesses = np.rollaxis(self.guess_grid[best_map], -1)
+        snrmask3d = np.repeat([snr_mask], self.best_guesses.shape[0], axis=0)
+        self.best_guesses[~snrmask3d] = np.nan
         self.best_fitargs = \
             {key: np.rollaxis(self.fiteach_arg_grid[key][best_map],-1)
                     for key in self.fiteach_arg_grid.keys()}
 
         from scipy.stats import mode
         model_mode = mode(best_map)
-        best_model_num = model_mode[0][0,0]
-        best_model_freq = model_mode[1][0,0]
-        best_model_frac = (float(best_model_freq)
-                           / np.prod(self.cube.shape[1:]))
+        best_model_num = int(model_mode[0][0, 0])
+        best_model_freq = model_mode[1][0, 0]
+        best_model_frac = (float(best_model_freq) /
+                           np.prod(self.cube.shape[1:]))
         if best_model_frac < .05:
             log.warn("Selected model is best only for less than %5 "
                      "of the cube, consider using the map of guesses.")
         self._best_model = best_model_num
-        self.best_overall  = self.guess_grid[best_model_num]
-        log.info("Overall best model: selected #%i %s" % (best_model_num,
-                 self.guess_grid[best_model_num].round(2)))
+        self.best_overall = self.guess_grid[best_model_num]
+        log.info("Overall best model: selected #%i %s" %
+                 (best_model_num, self.guess_grid[best_model_num].round(2)))
 
         try:
             best_snr = np.argmax(self.snr_map)
@@ -555,7 +595,7 @@ class SubCube(pyspeckit.Cube):
         return mask3d
 
     def get_snr_map(self, signal=None, noise=None, unit='km/s',
-                    signal_mask=None, noise_mask=None          ):
+                    signal_mask=None, noise_mask=None):
         """
         Calculates S/N ratio for the cube. If no information is given on where
         to look for signal and noise channels, a (more-or-less reasonable) rule
@@ -705,17 +745,17 @@ class SubCube(pyspeckit.Cube):
         self._signal_map = signal_map
         return signal_map
 
-    def get_chi_squared(self, sigma = None, refresh=False):
+    def get_chi_squared(self, sigma=None, refresh=False, **kwargs):
         """
         Computes a chi-squared map from modelcube / parinfo.
         """
         if self._modelcube is None or refresh:
-            self.get_modelcube()
+            self.get_modelcube(**kwargs)
 
         if sigma is None:
             sigma = self._rms_map
 
-        chisq = ((self.cube - self._modelcube)**2).sum(axis=0)/sigma**2
+        chisq = ((self.cube - self._modelcube)**2 / sigma**2).sum(axis=0)
 
         self.chi_squared = chisq
         return chisq
@@ -770,8 +810,8 @@ class SubCube(pyspeckit.Cube):
 
         return prob_chisq, dof
 
-    def mark_bad_fits(self, ax = None, mask = None,
-                      cut = 1e-20, method = 'cross', **kwargs):
+    def mark_bad_fits(self, ax=None, mask=None, cut=1e-20,
+                      method='cross', **kwargs):
         """
         Given an active axis used by Cube.mapplot, overplot
         pixels with bad fits with an overlay.
@@ -849,21 +889,22 @@ class SubCube(pyspeckit.Cube):
                 [y0-dy-.5,y0+dy+.5,y0+dy+.5,y0-dy-.5,y0-dy-.5],
                 **kwargs)
 
-    def get_likelihood(self, sigma = None):
+    def get_likelihood(self, sigma=None):
         """
         Computes log-likelihood map from chi-squared
         """
         # self-NOTE: need to deal with chi^2 first
         raise NotImplementedError
-    #    if sigma is None:
-    #        sigma = self._rms_map
 
-    #    # TODO: resolve extreme exponent values or risk overflowing
-    #    likelihood = (np.exp(-self.chi_squared/2)
-    #                  * (sigma*np.sqrt(2*np.pi))**(-self.xarr.size))
-    #    self.likelihood = np.log(likelihood)
+        #if sigma is None:
+        #    sigma = self._rms_map
 
-    #    return np.log(likelihood)
+        ## TODO: resolve extreme exponent values or risk overflowing
+        #likelihood = (np.exp(-self.chi_squared/2)
+        #              * (sigma*np.sqrt(2*np.pi))**(-self.xarr.size))
+        #self.likelihood = np.log(likelihood)
+
+        #return np.log(likelihood)
 
     def _unpack_fitkwargs(self, x, y, fiteachargs=None):
         """
@@ -949,7 +990,7 @@ class SubCube(pyspeckit.Cube):
         guesses: tuple or ndarray[naxis=3]
             Either a tuple/list of guesses with len(guesses) = npars or a cube
             of guesses with shape [npars, ny, nx].
-        errmap: ndarray[naxis=2]
+        errmap: ndarray[naxis=2] or ndarray[naxis=3]
             A map of rms of the noise to use for signal cutting.
         snrmap: ndarray[naxis=2]
             A map of signal-to-noise ratios to use. Overrides errmap.
@@ -1058,7 +1099,17 @@ class SubCube(pyspeckit.Cube):
                 sp.error = np.array(sp.error)
 
             elif errmap is not None:
-                sp.error = np.ones(sp.data.shape) * errmap[y,x]
+                if self.errorcube is not None:
+                    raise ValueError("Either the 'errmap' argument or"
+                                     " self.errorcube attribute should be"
+                                     " specified, but not both.")
+                if errmap.shape == self.cube.shape[1:]:
+                    sp.error = np.ones(sp.data.shape) * errmap[int(y),int(x)]
+                elif errmap.shape == self.cube.shape:
+                    sp.error = errmap[:, int(y), int(x)]
+            elif self.errorcube is not None:
+                sp.error = self.errorcube[:, int(y), int(x)]
+
             else:
                 if verbose_level > 1 and ii==0:
                     log.warn("using data std() as error.")
@@ -1099,7 +1150,8 @@ class SubCube(pyspeckit.Cube):
                     try:
                         for key in self.fiteach_args.keys():
                             kwargs[key][:,y,x] = lims_old[key]
-                    except IndexError:
+                    # TypeError for lists, IndexError for ndarrays
+                    except (IndexError, TypeError):
                         kwargs[key] = lims_old[key]
                 else:
                     log.info("Selecting best guess from input guess.")
