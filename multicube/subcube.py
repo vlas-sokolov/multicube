@@ -1179,11 +1179,12 @@ class SubCube(pyspeckit.Cube):
                     if np.all(fitkwargs['fixed']):
                         raise AllFixedException("all the parameters are fixed")
 
-                if max_sn < signal_cut:
-                    raise SnrCutException("pixel is below snr cut")
+                if max_sn is not None:
+                    if max_sn < signal_cut:
+                        raise SnrCutException("pixel is below snr cut")
 
-                elif np.isnan(max_sn):
-                    raise NanSnrAtPixel("s/n is nan")
+                    elif np.isnan(max_sn):
+                        raise NanSnrAtPixel("s/n is nan")
 
                 if verbose_level > 2:
                     log.info("Fitting %4i,%4i (s/n=%0.2g)" % (x,y,max_sn))
@@ -1219,7 +1220,12 @@ class SubCube(pyspeckit.Cube):
                 sp.specfit.modelpars = np.array(gg)
                 sp.specfit.modelerrs = np.zeros_like(gg)
             except Exception as ex:
+                exc_traceback = sys.exc_info()[2]
                 log.exception("Fit number %i at %i,%i failed on error %s" % (ii,x,y, str(ex)))
+                log.exception("Failure was in file {0} at line {1}".format(
+                    exc_traceback.tb_frame.f_code.co_filename,
+                    exc_traceback.tb_lineno,))
+                traceback.print_tb(exc_traceback)
                 log.exception("Guesses were: {0}".format(str(gg)))
                 log.exception("Fitkwargs were: {0}".format(str(fitkwargs)))
                 success = False
