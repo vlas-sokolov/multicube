@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 import numpy as np
 import matplotlib.pylab as plt
 import astropy.units as u
@@ -281,6 +282,17 @@ class SubCube(pyspeckit.Cube):
         except AttributeError:
             pass
 
+        try:
+            # some basic progress reporting for multicore > 1
+            self.iterticker += 1
+            # print a dot every 10%, so 10*multicore dots total
+            i, N = self.iterticker, self.itertotal
+            if not ((i-1) // (N/10) == i // (N/10)):
+                print('.', end='')
+
+        except AttributeError:
+            pass
+
         if cut is None:
             return self.specfit.get_full_model(pars=gg), gg
         else: # now we need to check the peak amplitude for each comp
@@ -360,17 +372,26 @@ class SubCube(pyspeckit.Cube):
 
         if multicore > 1:
             # python < 3.3 doesn't handle pooling kwargs (via starmap)
+            self.iterticker = 0
+            self.itertotal = model_grid.shape[0]/multicore
             self.you_shall_not_pass_kwargs = kwargs
+
             # pooling processes, collecting into a list
             result = pyspeckit.cubes.parallel_map(self.you_shall_not_pass,
                                             guess_grid, numcores=multicore)
-            # cleaning up kwargs taken for the ride
-            del self.you_shall_not_pass_kwargs
+            print('') # those progress dots didn't have a concluding newline
+
             for idx, r in enumerate(result):
                 # make sure the order is preserved, for mutliprocessing is
-                # truly an arcane art (shouldn't eat too much of the runtime)
+                # truly an arcane art (shouldn't eat too much time)
                 assert (guess_grid[idx]==r[1]).all()
                 model_grid[idx] = r[0]
+
+            # cleaning up kwargs taken for the ride
+            del self.you_shall_not_pass_kwargs
+            del self.iterticker
+            del self.itertotal
+
         else:
             with ProgressBar(model_grid.shape[0]) as bar:
                 for idx in np.ndindex(grid_shape):
