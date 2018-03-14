@@ -11,9 +11,10 @@ import pyspeckit
 from astropy.io import fits
 import astropy.units as u
 
-xy_shape = (30, 30)
-fittype = 'cold_ammonia'
-fitfunc = pyspeckit.spectrum.models.ammonia.cold_ammonia_model
+xy_shape = (10, 10)
+fittype = 'nh3_restricted_tex'
+fitfunc = pyspeckit.spectrum.models.ammonia.ammonia_model_restricted_tex
+
 model_kwargs = {'line_names': ['oneone', 'twotwo']}
 npars, npeaks = 6, 1
 
@@ -37,7 +38,7 @@ def gauss_to_ammoniaJK(xy_pars, lfreq, fname='foo', **model_kwargs):
     spc.cube += fits.getdata(fname + '-noise.fits')
     return spc
 
-truepars = [12, 4, 15, 0.3, -25, 0.5]
+truepars = [12, 4, 15, 0.3, -25, 0.5, 0]
 xy_pars = tinker_ring_parspace(truepars, xy_shape, [0, 2], [3, 1])
 cubelst = [
     gauss_to_ammoniaJK(xy_pars, freq_dict[line] * u.Hz, **model_kwargs)
@@ -47,17 +48,17 @@ cubelst = [
 # creating a SubCubeStack instance from a list of SubCubes
 cubes = SubCubeStack(cubelst)
 cubes.update_model(fittype)
-cubes.xarr.refX=freq_dict['oneone']*u.Hz
-cubes.xarr.velocity_convention='radio'
+cubes.xarr.refX = freq_dict['oneone'] * u.Hz
+cubes.xarr.velocity_convention = 'radio'
 #cubes.xarr.convert_to_unit('km/s')
 
 # setting up the grid of guesses and finding the one that matches best
-minpars = [5, 3, 10.0, 0.1, -30, 0.5]
-maxpars = [25, 7, 20.0, 1.0, -20, 0.5]
-fixed = [False, False, False, False, False, True]
-finesse = [5, 3, 5, 4, 4, 1]
+minpars = [5, 3, 10.0, 0.1, -30, 0.5, 0]
+maxpars = [25, 7, 20.0, 1.0, -20, 0.5, 10]
+fixed = [False, False, False, False, False, True, False]
+finesse = [5, 3, 5, 4, 4, 1, 1]
 cubes.make_guess_grid(minpars, maxpars, finesse, fixed=fixed)
-cubes.generate_model()
+cubes.generate_model(multicore=get_ncores())
 cubes.best_guess()
 
 rmsmap = cubes.slice(-37, -27, unit='km/s').cube.std(axis=0)
