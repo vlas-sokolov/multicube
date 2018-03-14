@@ -275,6 +275,12 @@ class SubCube(pyspeckit.Cube):
         """
         # TODO: seems to work, but needs more testing
         # TODO: the input arguments are ugly, rewrite
+        try:
+            # for multicore > 1
+            kwargs.update(self.you_shall_not_pass_kwargs)
+        except AttributeError:
+            pass
+
         if cut is None:
             return self.specfit.get_full_model(pars=gg), gg
         else: # now we need to check the peak amplitude for each comp
@@ -295,7 +301,7 @@ class SubCube(pyspeckit.Cube):
             return tot_model, gg_new
 
     def generate_model(self, guess_grid=None, model_file=None, redo=True,
-                       npeaks=None, **kwargs):
+                       npeaks=None, multicore=1, **kwargs):
         """
         Generates a grid of spectral models matching the
         shape of the input guess_grid array. Can take the
@@ -320,6 +326,8 @@ class SubCube(pyspeckit.Cube):
 
         redo : boolean; if False and model_file filename is in place, the
                model gird will not be generated anew
+
+        multicore : integer; number of threads to run on (defaults to 1)
 
         Additional keyword arguments are passed to a filter function
         `SubCube.you_shall_not_pass()`
@@ -349,10 +357,25 @@ class SubCube(pyspeckit.Cube):
         # NOTE: this for loop is the performance bottleneck!
         # would be nice if I could broadcast guess_grid to n_modelfunc...
         log.info("Generating spectral models from the guess grid . . .")
-        with ProgressBar(model_grid.shape[0]) as bar:
-            for idx in np.ndindex(grid_shape):
-                model_grid[idx], gg = self.you_shall_not_pass(guess_grid[idx],
-                                                              **kwargs       )
+
+        if multicore > 1:
+            # python < 3.3 doesn't handle pooling kwargs (via starmap)
+            self.you_shall_not_pass_kwargs = kwargs
+            # pooling processes, collecting into a list
+            result = pyspeckit.cubes.parallel_map(self.you_shall_not_pass,
+                                            guess_grid, numcores=multicore)
+            # cleaning up kwargs taken for the ride
+            del self.you_shall_not_pass_kwargs
+            for idx, r in enumerate(result):
+                # make sure the order is preserved, for mutliprocessing is
+                # truly an arcane art (shouldn't eat too much of the runtime)
+                assert (guess_grid[idx]==r[1]).all()
+                model_grid[idx] = r[0]
+        else:
+            with ProgressBar(model_grid.shape[0]) as bar:
+                for idx in np.ndindex(grid_shape):
+                    model_grid[idx], gg = self.you_shall_not_pass(
+                            guess_grid[idx], **kwargs)
                 if not np.all(np.equal(gg, guess_grid[idx])):
                     self.guess_grid[idx] = gg # TODO: why pass guess_grid then?
                 bar.update()
