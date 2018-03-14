@@ -287,9 +287,8 @@ class SubCube(pyspeckit.Cube):
             self.iterticker += 1
             # print a dot every 10%, so 10*multicore dots total
             i, N = self.iterticker, self.itertotal
-            if not ((i-1) // (N/10) == i // (N/10)):
+            if not ((i - 1) // (N / 10) == i // (N / 10)):
                 print('.', end='')
-
         except AttributeError:
             pass
 
@@ -391,15 +390,14 @@ class SubCube(pyspeckit.Cube):
             del self.you_shall_not_pass_kwargs
             del self.iterticker
             del self.itertotal
-
         else:
             with ProgressBar(model_grid.shape[0]) as bar:
                 for idx in np.ndindex(grid_shape):
                     model_grid[idx], gg = self.you_shall_not_pass(
                             guess_grid[idx], **kwargs)
-                if not np.all(np.equal(gg, guess_grid[idx])):
-                    self.guess_grid[idx] = gg # TODO: why pass guess_grid then?
-                bar.update()
+                    if not np.all(np.equal(gg, guess_grid[idx])):
+                        self.guess_grid[idx] = gg
+                    bar.update()
 
         if model_file is not None:
             np.save(model_file, model_grid)
@@ -821,7 +819,7 @@ class SubCube(pyspeckit.Cube):
         # ------------------- TODO --------------------- #
         # rewrite it to a real chi-square goodness of fit!
         # this is essentially a chi^2 test for normality
-        from scipy.stats import chisqprob
+        from scipy.stats.distributions import chi2
 
         # TODO: for Pearson's chisq test it would be
         # dof = self.xarr.size - self.specfit.fitter.npars - 1
@@ -833,7 +831,7 @@ class SubCube(pyspeckit.Cube):
 
         # TODO: derive an expression for this "Astronomer's X^2" dof.
         dof = self.xarr.size
-        prob_chisq = chisqprob(self.chi_squared, dof)
+        prob_chisq = chi2.sf(self.chi_squared, dof)
 
         # NOTE: for some reason get_modelcube returns zeros for some
         #       pixels even if corresponding Cube.parcube[:,y,x] is NaN
