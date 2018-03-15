@@ -588,16 +588,23 @@ class SubCube(pyspeckit.Cube):
                         bar.update()
 
         # indexing by nan values would cause an IndexError
+        best_nan = np.isnan(best_map)
         best_map[np.isnan(best_map)] = 0
-        best_map = best_map.astype(int)
-        self._best_map = best_map
+        best_map_int = best_map.astype(int)
+        best_map[best_nan] = np.nan
+        self._best_map = best_map_int
         self._best_rmsmap = rmsmin_map
-        self.best_guesses = np.rollaxis(self.guess_grid[best_map], -1)
+        self.best_guesses = np.rollaxis(self.guess_grid[best_map_int], -1)
         snrmask3d = np.repeat([snr_mask], self.best_guesses.shape[0], axis=0)
         self.best_guesses[~snrmask3d] = np.nan
-        self.best_fitargs = \
-            {key: np.rollaxis(self.fiteach_arg_grid[key][best_map],-1)
-                    for key in self.fiteach_arg_grid.keys()}
+        try:
+            self.best_fitargs = {
+                key: np.rollaxis(self.fiteach_arg_grid[key][best_map_int],-1)
+                for key in self.fiteach_arg_grid.keys()}
+        except IndexError:
+            # FIXME why is this happening? do I remove low SNRs from guesses?
+            log.warn("SubCube.fiteach_arg_grid has a different shape than"
+                     " the one used. SubCube.best_fitargs won't be generated.")
 
         from scipy.stats import mode
         model_mode = mode(best_map)
