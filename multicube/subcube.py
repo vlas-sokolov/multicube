@@ -405,8 +405,7 @@ class SubCube(pyspeckit.Cube):
             self.model_grid = model_grid
 
     def best_guess(self, model_grid=None, sn_cut=None, pbar_inc=1000,
-                   memory_limit=None, model_file=None,
-                   np_load_kwargs={}, **kwargs):
+                   model_file=None, np_load_kwargs={}, **kwargs):
         """
         For a grid of initial guesses, determine the optimal one based
         on the preliminary residual of the specified spectral model.
@@ -426,10 +425,6 @@ class SubCube(pyspeckit.Cube):
                    updated. The default should be sensible for modern
                    machines. Prevents the progress bar from consiming
                    too much computational power.
-
-        memory_limit : float; How many gigabytes of RAM could be used for
-                       broadcasting. If estimated usage goes over this
-                       number, best_guess switches to a slower method.
 
         model_file : string; if not None then the models grid will be
                      read from a file using np.load, which additional
@@ -468,124 +463,78 @@ class SubCube(pyspeckit.Cube):
 
         log.info("Calculating residuals for generated models . . .")
 
-        try: # TODO: move this out into an astro_toolbox function
-            import psutil
-            mem = psutil.virtual_memory().available
-        except ImportError:
-            import os
-            try:
-                memgb = os.popen("free -g").readlines()[1].split()[3]
-            except IndexError: # would happen on Macs/Windows
-                memgb = 8
-                log.warn("Can't get the free RAM "
-                         "size, assuming %i GB" % memgb)
-            memgb = memory_limit or memgb
-            mem = int(memgb) * 2**30
-
         if sn_cut:
             snr_mask = self.snr_map > sn_cut
         else:
             snr_mask = np.ones(shape=self.cube.shape[1:], dtype=bool)
 
-        # allow for 50% computational overhead
-        threshold = self.cube.nbytes*model_grid.shape[0]*2
-        if mem < threshold:
-            log.warn("The available free memory might not be enough for "
-                     "broadcasting model grid to the spectral cube. Will "
-                     "iterate over all the XY pairs instead. Coffee time!")
+        try:
+            if type(model_grid) is not np.ndarray: # assume memmap type
+                raise MemoryError("This will take ages, skipping to "
+                                  "the no-broadcasting scenario.")
+            # NOTE: this below is a monument to how things should *not*
+            #       be done. Seriously, trying to broadcast 1.5M models
+            #       to a 400x200 map can result in 700GB of RAM needed!
+            #residual_rms = np.empty(shape=((model_grid.shape[0],)
+            #                               + self.cube.shape[1:]))
+            #with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
+            #    for (y,x) in np.ndindex(self.cube.shape[1:]):
+            #        residual_rms[:,y,x] = (self.cube[None,:,y,x]
+            #                               - model_grid).std(axis=1)
+            #        bar.update()
 
-            try:
-                if type(model_grid) is not np.ndarray: # assume memmap type
-                    raise MemoryError("This will take ages, skipping to "
-                                      "the no-broadcasting scenario.")
-                # NOTE: this below is a monument to how things should *not*
-                #       be done. Seriously, trying to broadcast 1.5M models
-                #       to a 400x200 map can result in 700GB of RAM needed!
-                #residual_rms = np.empty(shape=((model_grid.shape[0],)
-                #                               + self.cube.shape[1:]))
-                #with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
-                #    for (y,x) in np.ndindex(self.cube.shape[1:]):
-                #        residual_rms[:,y,x] = (self.cube[None,:,y,x]
-                #                               - model_grid).std(axis=1)
-                #        bar.update()
-
-                best_map = np.full(self.cube.shape[1:], np.nan)
-                rmsmin_map = np.full(self.cube.shape[1:], np.nan)
-                with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
-                    for (y, x) in np.ndindex(self.cube.shape[1:]):
-                        if not np.isfinite(self.cube[:, y, x]).any():
+            best_map = np.full(self.cube.shape[1:], np.nan)
+            resqmin_map = np.full(self.cube.shape[1:], np.nan)
+            with ProgressBar(np.prod(self.cube.shape[1:])) as bar:
+                for (y, x) in np.ndindex(self.cube.shape[1:]):
+                    if not np.isfinite(self.cube[:, y, x]).all():
+                        # why don't we use .any() instead and censor nan?
+                        # because numpy's NaN functions are significantly
+                        # slower than the normal ones! ~40% or so losses?
+                        bar.update()
+                        continue
+                    if sn_cut:
+                        if not snr_mask[y, x]:
+                            best_map[y, x], resqmin_map[y, x] = np.nan, np.nan
                             bar.update()
                             continue
-                        if sn_cut:
-                            if not snr_mask[y, x]:
-                                best_map[y, x], rmsmin_map[y,
-                                                           x] = np.nan, np.nan
-                                bar.update()
-                                continue
-                        resid_rms_xy = (np.nanstd(
-                            model_grid - self.cube[None, :, y, x], axis=1))
-                        best_map[y, x] = np.argmin(resid_rms_xy)
-                        rmsmin_map[y, x] = np.nanmin(resid_rms_xy)
-                        bar.update()
-            except MemoryError:  # catching memory errors could be really bad!
-                log.warn("Not enough memory to broadcast model grid to the "
-                         "XY grid. This is bad for a number of reasons, the "
-                         "foremost of which: the running time just went "
-                         "through the roof. Leave it overnight maybe?")
-                best_map = np.full(self.cube.shape[1:], np.nan)
-                rmsmin_map = np.full(self.cube.shape[1:], np.nan)
-                # TODO: this takes ages! refactor this through hdf5
-                # "chunks" of acceptable size, and then broadcast them!
-                with ProgressBar(
-                        np.prod((model_grid.shape[0], ) + self.cube.shape[
-                            1:])) as bar:
-                    for (y, x) in np.ndindex(self.cube.shape[1:]):
-                        if not np.isfinite(self.cube[:, y, x]).any():
+                    # sum of squared residuals for (x, y) for every model
+                    resq_xy = np.sum(np.square(
+                        model_grid - self.cube[None, :, y, x]), axis=1)
+                    best_map[y, x] = np.argmin(resq_xy)
+                    resqmin_map[y, x] = np.nanmin(resq_xy)
+                    bar.update()
+        except MemoryError:  # catching memory errors could be really bad!
+            log.warn("Not enough memory to broadcast model grid to the "
+                     "XY grid. This is bad for a number of reasons, the "
+                     "foremost of which: the running time just went "
+                     "through the roof. Leave it overnight maybe?")
+            best_map = np.full(self.cube.shape[1:], np.nan)
+            resqmin_map = np.full(self.cube.shape[1:], np.nan)
+            # TODO: this takes ages! refactor this through hdf5
+            # "chunks" of acceptable size, and then broadcast them!
+            with ProgressBar(
+                    np.prod((model_grid.shape[0], ) + self.cube.shape[
+                        1:])) as bar:
+                for (y, x) in np.ndindex(self.cube.shape[1:]):
+                    if not np.isfinite(self.cube[:, y, x]).any():
+                        bar.update(bar._current_value +
+                                   model_grid.shape[0])
+                        continue
+                    if sn_cut:
+                        if not snr_mask[y, x]:
+                            best_map[y, x], resqmin_map[y, x] = np.nan, np.nan
                             bar.update(bar._current_value +
                                        model_grid.shape[0])
                             continue
-                        if sn_cut:
-                            if not snr_mask[y, x]:
-                                best_map[y, x], rmsmin_map[y,
-                                                           x] = np.nan, np.nan
-                                bar.update(bar._current_value +
-                                           model_grid.shape[0])
-                                continue
-                        resid_rms_xy = np.empty(shape=model_grid.shape[0])
-                        for model_id in np.ndindex(model_grid.shape[0]):
-                            resid_rms_xy[model_id] = (
-                                self.cube[:, y, x] - model_grid[model_id]
-                            ).std()
-                            if not model_id[0] % pbar_inc:
-                                bar.update(bar._current_value + pbar_inc)
-                        best_map[y, x] = np.argmin(resid_rms_xy)
-                        rmsmin_map[y, x] = np.nanmin(resid_rms_xy)
-        else:
-            # NOTE: broadcasting below is a much faster way to compute
-            #       cube - model residuals. But for big model sizes this
-            #       will cause memory overflows.
-            #       The code above tried to catch this before it happens
-            #       and run things in a slower fashion.
-            residual_rms = (
-                self.cube[None, :, :, :] - model_grid[:, :, None, None]).std(
-                    axis=1)
-            if sn_cut:
-                zlen = residual_rms.shape[0]
-                residual_rms[~self.get_slice_mask(snr_mask, zlen)] = np.inf
-
-            try:
-                best_map = np.argmin(residual_rms, axis=0)
-                rmsmin_map = residual_rms.min(axis=0)
-            except MemoryError:
-                log.warn("Not enough memory to compute the minimal"
-                         " residuals, will iterate over XY pairs.")
-                best_map = np.empty_like(self.cube[0], dtype=int)
-                rmsmin_map = np.empty_like(self.cube[0])
-                with ProgressBar(np.prod(best_map.shape)) as bar:
-                    for (y, x) in np.ndindex(best_map.shape):
-                        best_map[y, x] = np.argmin(residual_rms[:, y, x])
-                        rmsmin_map[y, x] = residual_rms[:, y, x].min()
-                        bar.update()
+                    resq_xy = np.empty(shape=model_grid.shape[0])
+                    for model_id in np.ndindex(model_grid.shape[0]):
+                        resq_xy[model_id] = np.sum(np.square(self.cube[:, y, x]
+                                                       - model_grid[model_id]))
+                        if not model_id[0] % pbar_inc:
+                            bar.update(bar._current_value + pbar_inc)
+                    best_map[y, x] = np.argmin(resq_xy)
+                    resqmin_map[y, x] = np.nanmin(resq_xy)
 
         # indexing by nan values would cause an IndexError
         best_nan = np.isnan(best_map)
@@ -593,7 +542,7 @@ class SubCube(pyspeckit.Cube):
         best_map_int = best_map.astype(int)
         best_map[best_nan] = np.nan
         self._best_map = best_map_int
-        self._best_rmsmap = rmsmin_map
+        self._best_resqmap = resqmin_map
         self.best_guesses = np.rollaxis(self.guess_grid[best_map_int], -1)
         snrmask3d = np.repeat([snr_mask], self.best_guesses.shape[0], axis=0)
         self.best_guesses[~snrmask3d] = np.nan
@@ -1183,9 +1132,11 @@ class SubCube(pyspeckit.Cube):
                                                (xpatch+x)[local_fits] ].T
                 ggrid = np.vstack([gg, near_guesses])
                 # for some reason nan values creep through!
-                ggrid = np.array([val for val in ggrid if np.all(np.isfinite(val))])
-                resid = [(sp.data - sp.specfit.get_full_model(pars=iguess)).std()
-                            for iguess in ggrid]
+                ggrid = np.array(
+                    [val for val in ggrid if np.all(np.isfinite(val))])
+                resid = [
+                    np.square(sp.data - sp.specfit.get_full_model(pars=iguess))
+                    .sum() for iguess in ggrid]
                 gg = ggrid[np.argmin(resid)]
                 if np.argmin(resid):
                     gg_ind = np.where(np.all((self.parcube[:, ypatch+y,
