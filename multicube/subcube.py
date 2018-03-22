@@ -623,9 +623,9 @@ class SubCube(pyspeckit.Cube):
         try:
             best_snr = np.argmax(self.snr_map)
             best_snr = np.unravel_index(best_snr, self.snr_map.shape)
-            self.best_snr_guess = self.guess_grid[best_map[best_snr]]
+            self.best_snr_guess = self.guess_grid[best_map_int[best_snr]]
             log.info("Best model @ highest SNR: #%i %s" %
-                     (best_map[best_snr], self.best_snr_guess.round(2)))
+                     (best_map_int[best_snr], self.best_snr_guess.round(2)))
         except AttributeError:
             log.warn("Can't find the SNR map, best guess at "
                      "highest SNR pixel will not be stored.")
